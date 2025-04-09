@@ -53,6 +53,15 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
+  imagePicker: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#CCCCCC",
+    borderRadius: 10,
+    backgroundColor: "#1A1A1A",
+  },
   emptyImageText: {
     color: COLORS.grey,
     fontSize: 16,
