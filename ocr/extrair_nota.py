@@ -4,11 +4,7 @@ Integração com Google Sheets via OAuth2 (Service Account JSON).
 Disponibiliza endpoint Flask (/scan) para aplicativo mobile.
 Inclui debug detalhado para append na planilha e refinamento de valor_total com fallback.
 """
-import re
-import base64
-import json
-import traceback
-import os
+import traceback, os, json, base64, time, re, requests
 from statistics import mean
 from flask import Flask, request, jsonify
 from google.cloud import vision_v1
@@ -200,6 +196,7 @@ def health_check():
 
 @app.route('/scan', methods=['POST'])
 def extract_endpoint():
+    time.sleep(10)
     try:
         print(f"Request received - Content-Type: {request.content_type}")
         print(f"Available files: {list(request.files.keys()) if request.files else 'None'}")
@@ -213,12 +210,14 @@ def extract_endpoint():
                 if data and 'image' in data:
                     img = base64.b64decode(data['image'])
                 else:
+                    print("DEBUG: Nenhum arquivo enviado no JSON.")
                     return jsonify({
                         'success': False,
                         'error': 'No file provided in JSON',
                         'message': 'Por favor, forneça um arquivo para análise'
                     }), 400
             else:
+                print(f"DEBUG: Nenhum arquivo enviado. Content-Type: {request.content_type}")
                 return jsonify({
                     'success': False,
                     'error': f'No file provided. Content-Type: {request.content_type}',
@@ -227,18 +226,35 @@ def extract_endpoint():
         else:
             img = f.read()
         
-        raw, text, words = ocr_document(img)
-        lines = group_lines_data(words)
-        texts = lines_data_to_text(lines)
-        fields = parse_fields(text, texts)
-        itens = extract_items(lines)
-        
-        # Tenta fazer o append na planilha, mas não impede o retorno se falhar
+        # OCR e extração
         try:
-            append_to_sheet(fields, itens)
-            sheet_updated = True
+            raw, text, words = ocr_document(img)
+            lines = group_lines_data(words)
+            texts = lines_data_to_text(lines)
+            fields = parse_fields(text, texts)
+            itens = extract_items(lines)
+        except Exception as ocr_error:
+            print("DEBUG: Falha no OCR ou extração:", ocr_error)
+            traceback.print_exc()
+            # Se falhar, ainda assim tenta enviar campos vazios
+            fields = {'data_emissao': None, 'valor_total': None, 'cnpj': None, 'nome_loja': None}
+            itens = []
+        
+        # Validação extra: se todos os campos estão vazios, loga
+        if not any(fields.values()):
+            print("DEBUG: Todos os campos extraídos estão vazios.")
+        else:
+            print(f"DEBUG: Campos extraídos: {fields}")
+        print(f"DEBUG: Itens extraídos: {itens}")
+
+        # Sempre tenta fazer o append na planilha, mesmo se campos estiverem vazios
+        try:
+            append_result = append_to_sheet(fields, itens)
+            sheet_updated = append_result is not None
+            print(f"DEBUG: Resultado do append: {append_result}")
         except Exception as e:
             print(f"Erro ao atualizar planilha: {str(e)}")
+            traceback.print_exc()
             sheet_updated = False
         
         return jsonify({
