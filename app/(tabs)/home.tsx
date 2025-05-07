@@ -1,59 +1,121 @@
-import { Text, TextInput, TouchableOpacity, View, Alert, Keyboard, TouchableWithoutFeedback } from 'react-native';
-import React, { useState } from 'react';
-import { styles } from '@/styles/auth.styles';
+import { Text, TextInput, View, Alert, Keyboard, TouchableWithoutFeedback, Image, Animated, Pressable, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { homeStyles } from '@/styles/home.styles';
+import { COLORS } from '@/constants/theme';
 import * as Linking from 'expo-linking';
 
 export default function Home() {
     const [text, setText] = useState('');
 
-    const isValidGoogleSheetId = (id: string) => {
-        const regex = /^[a-zA-Z0-9-_]{44}$/;
-        return regex.test(id);
+    // Animation refs
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+
+    useEffect(() => {
+        Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+        }).start();
+    }, [fadeAnim]);
+
+    // Aceita tanto o link inteiro quanto só o ID
+    const extractSheetUrl = (input: string) => {
+        // Se for link do Google Sheets, retorna ele mesmo
+        if (/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9-_]+/.test(input)) {
+            return input;
+        }
+        // Se for só o ID, monta a URL
+        const idMatch = input.match(/([a-zA-Z0-9-_]{44,})/);
+        if (idMatch) {
+            return `https://docs.google.com/spreadsheets/d/${idMatch[1]}`;
+        }
+        return null;
     };
 
     const handleSearch = () => {
-        if (text.trim()) {
-            if (isValidGoogleSheetId(text.trim())) {
-                const googleSheetsUrl = `https://docs.google.com/spreadsheets/d/${text.trim()}`;
-                Linking.openURL(googleSheetsUrl).catch((err) =>
-                    console.error("Failed to open URL:", err)
-                );
-            } else {
-                Alert.alert("Invalid ID", "Please enter a valid Google Sheets ID.");
-            }
+        const url = extractSheetUrl(text.trim());
+        if (url) {
+            Linking.openURL(url).catch((err) =>
+                console.error("Failed to open URL:", err)
+            );
         } else {
-            Alert.alert("Empty Field", "Please enter a Google Sheets ID.");
+            Alert.alert("Link inválido", "Digite o link completo ou o ID do Google Sheets.");
         }
     };
 
+    const onPressIn = () => {
+        Animated.spring(scaleAnim, {
+            toValue: 0.96,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const onPressOut = () => {
+        Animated.spring(scaleAnim, {
+            toValue: 1,
+            useNativeDriver: true,
+        }).start();
+    };
+
     return (
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.container}>
-                <View style={styles.brandSection}>
-                    <Text style={styles.appName}>ID Sheets</Text>
-                    <View style={{ padding: 10, width: '80%' }}>
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <Animated.View style={[homeStyles.container, { opacity: fadeAnim }]}>
+                    {/* LOGO */}
+                    <View style={homeStyles.logoSection}>
+                        <View>
+                            <Image
+                                source={require('@/assets/images/icon3.gif')}
+                                style={homeStyles.logoImage}
+                                resizeMode="contain"
+                            />
+                        </View>
+                        <Text style={homeStyles.title}>
+                            ID Sheets
+                        </Text>
+                        <Text style={homeStyles.subtitle}>
+                            Acesse rapidamente sua planilha do Google
+                        </Text>
+                    </View>
+
+                    {/* INPUT */}
+                    <View style={homeStyles.inputSection}>
                         <TextInput
-                            style={{
-                                height: 40,
-                                padding: 5,
-                                borderWidth: 1,
-                                borderColor: 'gray',
-                                borderRadius: 5,
-                                color: 'white',
-                            }}
-                            placeholder="Enter Google Sheets ID..."
-                            placeholderTextColor="gray"
-                            onChangeText={(newText) => setText(newText)}
+                            style={homeStyles.input}
+                            placeholder="Cole o link ou ID do Google Sheets aqui"
+                            placeholderTextColor={COLORS.grey}
+                            onChangeText={setText}
                             value={text}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            selectionColor={COLORS.primary}
                         />
                     </View>
-                    <View style={{ padding: 10, width: '50%' }}>
-                        <TouchableOpacity style={styles.googleButton} onPress={handleSearch}>
-                            <Text style={styles.googleButtonText}>Search</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </View>
-        </TouchableWithoutFeedback>
+
+                    {/* BOTÃO */}
+                    <Animated.View style={{ alignSelf: 'stretch', marginTop: 20, transform: [{ scale: scaleAnim }] }}>
+                        <Pressable
+                            style={homeStyles.button}
+                            onPress={handleSearch}
+                            onPressIn={onPressIn}
+                            onPressOut={onPressOut}
+                        >
+                            <Text style={homeStyles.buttonText}>
+                                Abrir Planilha
+                            </Text>
+                        </Pressable>
+                    </Animated.View>
+
+                    {/* DICA */}
+                    <Text style={homeStyles.tip}>
+                        Cole o link completo ou apenas o ID da sua planilha.
+                    </Text>
+                </Animated.View>
+            </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
     );
 }

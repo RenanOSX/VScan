@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image, SafeAreaView, Platform, Alert, ActivityIndicator, Share } from 'react-native'
-import React, { useState, useEffect } from 'react'
+import { View, Text, TouchableOpacity, Image, SafeAreaView, Platform, Alert, ActivityIndicator, Share } from 'react-native'
+import React, { useState, useEffect, useRef } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import { AntDesign, Ionicons } from '@expo/vector-icons'
 import * as FileSystem from 'expo-file-system'
@@ -7,6 +7,7 @@ import { WebView } from 'react-native-webview'
 import * as Linking from 'expo-linking'
 import { COLORS } from '@/constants/theme'
 import { router } from 'expo-router'
+import scanStyles from '@/styles/scan.styles'
 
 // Define proper types for the selected file
 type FileInfo = {
@@ -18,14 +19,22 @@ type FileInfo = {
 
 // Config for Python backend
 const API_CONFIG = {
-  baseUrl: Platform.OS === 'web' ? 'http://localhost:5000' : 'http://10.0.2.2:5000', // Use 10.0.2.2 for Android emulator to access localhost
+  baseUrl: 'http://192.168.15.84:5000', // Use your PC's IP address
   scanEndpoint: '/scan'
 }
+
+// Dropdown options
+const SCAN_TYPES = [
+  { label: 'Google Vision', value: 'nota' },
+  { label: 'Tesseract', value: 'recibo' },
+]
 
 export default function Scan() {
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null)
   const [fileType, setFileType] = useState<'pdf' | 'image' | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [selectedScanType, setSelectedScanType] = useState(SCAN_TYPES[0])
+  const [dropdownVisible, setDropdownVisible] = useState(false)
 
   const selectFile = async () => {
     try {
@@ -103,48 +112,39 @@ export default function Scan() {
     }
   };
 
-  // Call Python script function
   const callPythonScript = async (fileUri: string) => {
     try {
       const formData = new FormData();
-      
-      // Create file object for multipart/form-data
-      const fileNameParts = selectedFile?.name?.split('.') || ['file', 'unknown'];
-      const fileType = fileNameParts[fileNameParts.length - 1];
-      
-      // Better way to create the file object for Flask compatibility
-      if (Platform.OS === 'web') {
-        // For web, fetch the file first and then append it
-        try {
-          const response = await fetch(fileUri);
-          const blob = await response.blob();
-          formData.append('file', blob, selectedFile?.name || 'file.' + fileType);
-        } catch (fetchError) {
-          console.error('Error fetching file for form data:', fetchError);
-          // Fallback to basic approach
-          formData.append('file', {
-            uri: fileUri,
-            name: selectedFile?.name || 'file.' + fileType,
-            type: selectedFile?.mimeType || 'application/' + fileType
-          } as any);
-        }
-      } else {
-        // Mobile approach
-        formData.append('file', {
-          uri: fileUri,
-          name: selectedFile?.name || 'file.' + fileType,
-          type: selectedFile?.mimeType || 'application/' + fileType
-        } as any);
+  
+      // Pegue extensão e mimeType
+      const fileName = selectedFile?.name || 'file';
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      let mimeType = selectedFile?.mimeType;
+      if (!mimeType) {
+        if (ext === 'pdf') mimeType = 'application/pdf';
+        else if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+        else mimeType = 'application/octet-stream';
       }
-      
+  
+      // Sempre envie o arquivo assim:
+      formData.append('file', {
+        uri: fileUri,
+        name: fileName,
+        type: mimeType,
+      } as any);
+  
       console.log(`Sending request to ${API_CONFIG.baseUrl}${API_CONFIG.scanEndpoint}`);
-      
-      // Make request to Python backend
+  
       const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.scanEndpoint}`, {
         method: 'POST',
         body: formData,
+        headers: {
+          Accept: 'application/json',
+          // NÃO defina Content-Type!
+        },
       });
-
+  
       return response;
     } catch (error: any) {
       if (
@@ -172,24 +172,22 @@ export default function Scan() {
     
     setIsLoading(true)
     try {
-      // Handle platform-specific URI formats
-      const fileUri = Platform.OS === 'ios' 
-        ? selectedFile.uri.replace('file://', '') 
-        : selectedFile.uri
-        
+      // Sempre use o uri original (com file://)
+      const fileUri = selectedFile.uri;
+  
       console.log('Scanning file:', fileUri)
-      
-      // Only verify file existence when not on web platform
+  
+      // Verifique existência do arquivo (opcional)
       if (Platform.OS !== 'web') {
         const fileInfo = await FileSystem.getInfoAsync(fileUri)
         if (!fileInfo.exists) {
           throw new Error("File does not exist")
         }
       }
-      
-      // Call Python script with proper routing
-      await callPythonScript(selectedFile.uri);
-      
+  
+      // Chame o backend
+      await callPythonScript(fileUri);
+  
       Alert.alert('Success', 'File processed successfully!')
     } catch (error) {
       console.log('Error scanning file:', error)
@@ -210,69 +208,118 @@ export default function Scan() {
     }
   }, [selectedFile, fileType]);
 
+  // Dropdown render
+  const renderDropdown = () => (
+    dropdownVisible && (
+      <View style={scanStyles.dropdownMenu}>
+        {SCAN_TYPES.map((option) => (
+          <TouchableOpacity
+            key={option.value}
+            style={scanStyles.dropdownItem}
+            onPress={() => {
+              setSelectedScanType(option)
+              setDropdownVisible(false)
+            }}
+          >
+            <Text style={[
+              scanStyles.dropdownItemText,
+              selectedScanType.value === option.value && { color: COLORS.primary }
+            ]}>
+              {option.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    )
+  )
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={scanStyles.container}>
+      {/* Dropdown Selector */}
+      <View style={scanStyles.dropdownContainer}>
+        <TouchableOpacity
+          style={scanStyles.dropdownButton}
+          onPress={() => setDropdownVisible(!dropdownVisible)}
+          activeOpacity={0.8}
+        >
+          <Text style={scanStyles.dropdownButtonText}>
+            {selectedScanType.label}
+          </Text>
+          <AntDesign name={dropdownVisible ? 'up' : 'down'} size={18} color={COLORS.primary} style={{ marginLeft: 8 }} />
+        </TouchableOpacity>
+        {renderDropdown()}
+      </View>
+
       {/* Header */}
-      <View style={styles.header}>
-        {selectedFile ? (
-          <TouchableOpacity onPress={clearSelection} style={styles.headerButton}>
-            <AntDesign name="close" size={24} color={COLORS.white} />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.headerButton} />
+      <View style={scanStyles.header}>
+        {/* Antes de selecionar arquivo: título centralizado */}
+        {!selectedFile && (
+          <View style={scanStyles.headerTitleAloneWrapper}>
+            <Text style={scanStyles.headerTitleAlone}>Document Scanner</Text>
+          </View>
         )}
-        
-        <Text style={styles.headerTitle}>Document Scanner</Text>
-        
+
+        {/* Após selecionar arquivo: botão X, título à esquerda e botão Scan It à direita */}
         {selectedFile && (
-          <TouchableOpacity onPress={scanFile} style={styles.scanButton}>
-            <Text style={styles.scanButtonText}>Scan It</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity onPress={clearSelection} style={scanStyles.headerButton}>
+              <AntDesign name="close" size={24} color={COLORS.white} />
+            </TouchableOpacity>
+            <Text style={scanStyles.headerTitleSide}>Document Scanner</Text>
+            <TouchableOpacity onPress={scanFile} style={scanStyles.scanButton}>
+              <Text style={scanStyles.scanButtonText}>Scan It</Text>
+            </TouchableOpacity>
+          </>
         )}
       </View>
 
       {/* Main Content */}
-      <View style={styles.content}>
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>Processing...</Text>
-          </View>
+      <View style={scanStyles.content}>
+      {isLoading ? (
+      <View style={scanStyles.loadingContainer}>
+        {/* Replace ActivityIndicator with your image */}
+        <Image
+          source={require('@/assets/images/loading_gura1.gif')}
+          style={{ width: 128, height: 128, marginBottom: 16 }}
+          resizeMode="contain"
+        />
+        <Text style={scanStyles.loadingText}>Processing...</Text>
+      </View>
         ) : selectedFile ? (
-          <View style={styles.previewContainer}>
+          <View style={scanStyles.previewContainer}>
             {fileType === 'pdf' ? (
               Platform.OS === 'android' ? (
                 <WebView
                   source={{ uri: selectedFile.uri }}
-                  style={styles.pdfView}
+                  style={scanStyles.pdfView}
                   originWhitelist={['*']}
                   javaScriptEnabled={true}
                   domStorageEnabled={true}
                   onError={() => Alert.alert('Error', 'Failed to load PDF.')}
                 />
               ) : (
-                <View style={styles.pdfPlaceholder}>
+                <View style={scanStyles.pdfPlaceholder}>
                   <AntDesign name="pdffile1" size={72} color={COLORS.primary} />
-                  <Text style={styles.pdfText}>PDF file selected</Text>
-                  <Text style={styles.pdfSubtext}>PDF preview available after scanning</Text>
+                  <Text style={scanStyles.pdfText}>PDF file selected</Text>
+                  <Text style={scanStyles.pdfSubtext}>PDF preview available after scanning</Text>
                 </View>
               )
             ) : (
               <Image
                 source={{ uri: selectedFile.uri }}
-                style={styles.imagePreview}
+                style={scanStyles.imagePreview}
                 resizeMode="contain"
               />
             )}
-            <Text style={styles.fileName}>{selectedFile.name}</Text>
+            <Text style={scanStyles.fileName}>{selectedFile.name}</Text>
           </View>
         ) : (
-          <View style={styles.emptyStateContainer}>
-            <TouchableOpacity style={styles.selectButton} onPress={selectFile}>
+          <View style={scanStyles.emptyStateContainer}>
+            <TouchableOpacity style={scanStyles.selectButton} onPress={selectFile}>
               <Ionicons name="document-text" size={64} color={COLORS.primary} />
-              <Text style={styles.selectText}>Select PDF or Image</Text>
+              <Text style={scanStyles.selectText}>Select PDF or Image</Text>
             </TouchableOpacity>
-            <Text style={styles.instructionText}>
+            <Text style={scanStyles.instructionText}>
               Select a document to scan it with our AI-powered processing
             </Text>
           </View>
@@ -281,141 +328,3 @@ export default function Scan() {
     </SafeAreaView>
   )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    height: 60,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.surface,
-  },
-  headerButton: {
-    width: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  scanButton: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  scanButtonText: {
-    color: COLORS.white,
-    fontWeight: 'bold',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyStateContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  },
-  selectButton: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
-    borderWidth: 2,
-    borderColor: COLORS.surface,
-    borderStyle: 'dashed',
-    borderRadius: 16,
-    width: '90%',
-    aspectRatio: 1.5,
-    backgroundColor: COLORS.surfaceLight,
-    marginBottom: 20,
-  },
-  selectText: {
-    marginTop: 15,
-    fontSize: 18,
-    fontWeight: '500',
-    color: COLORS.primary,
-  },
-  instructionText: {
-    textAlign: 'center',
-    color: COLORS.grey,
-    paddingHorizontal: 20,
-    fontSize: 14,
-  },
-  previewContainer: {
-    width: '100%',
-    height: '90%',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceLight,
-    borderRadius: 16,
-    overflow: 'hidden',
-    padding: 10,
-  },
-  imagePreview: {
-    width: '100%',
-    height: '90%',
-    borderRadius: 8,
-  },
-  pdfView: {
-    flex: 1,
-    width: '100%',
-    height: '90%',
-  },
-  fileName: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: '500',
-    color: COLORS.white,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: COLORS.primary,
-  },
-  pdfPlaceholder: {
-    flex: 1,
-    width: '100%',
-    height: '90%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceLight,
-    borderRadius: 8,
-  },
-  pdfText: {
-    marginTop: 20,
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  pdfSubtext: {
-    marginTop: 10,
-    fontSize: 14,
-    color: COLORS.grey,
-  },
-  viewPdfButton: {
-    marginTop: 20,
-    backgroundColor: COLORS.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  viewPdfButtonText: {
-    color: COLORS.white,
-    fontWeight: '600',
-  }
-})
