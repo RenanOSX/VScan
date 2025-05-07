@@ -1,3 +1,9 @@
+# VScan - Document Scanner App
+
+This application scans documents and extracts information using OCR powered by Google Cloud Vision.
+
+## Project Structure
+
 # Welcome to your Expo app 👋
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).

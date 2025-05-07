@@ -26,14 +26,8 @@ export default function RootLayout() {
             tabBarIcon: ({size, color}) => <Ionicons name="home" size={size} color={color} />
           }}
         />
-        {/* <Tabs.Screen
-          name="bookmarks"
-          options={{
-            tabBarIcon: ({size, color}) => <Ionicons name="bookmarks" size={size} color={color} />
-          }}
-        /> */}
         <Tabs.Screen
-          name="create"
+          name="scan"
           options={{
             tabBarIcon: ({size, color}) => <Ionicons name="add-circle" size={size} color={color} />
           }}
