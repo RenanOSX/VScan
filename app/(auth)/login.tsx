@@ -15,7 +15,7 @@ export default function login() {
             
             if (setActive && createdSessionId) {
                 setActive({session: createdSessionId})
-                router.replace('/(tabs)/scan')
+                router.replace('/(tabs)/home')
             }
         } catch (error) {
             console.log("OAuth error: ", error)
@@ -30,8 +30,8 @@ export default function login() {
             <View style={styles.logoContainer}>
                 <Ionicons name='leaf' size={32} color={COLORS.primary} />
             </View>
-            <Text style={styles.appName}>Atomic</Text>
-            <Text style={styles.tagline}>Fast. Simple. Atomic.</Text>
+            <Text style={styles.appName}>VScan</Text>
+            <Text style={styles.tagline}>Simple Scanner for good looking people</Text>
         </View>
 
 
