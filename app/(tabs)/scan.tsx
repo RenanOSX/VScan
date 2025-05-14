@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, Image, SafeAreaView, Platform, Alert, ActivityIndicator, Share } from 'react-native'
+import { View, Text, TouchableOpacity, Image, SafeAreaView, Platform, Alert, ActivityIndicator, Share, KeyboardAvoidingView } from 'react-native'
 import React, { useState, useEffect, useRef } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import { AntDesign, Ionicons } from '@expo/vector-icons'
@@ -8,6 +8,7 @@ import * as Linking from 'expo-linking'
 import { COLORS } from '@/constants/theme'
 import { router } from 'expo-router'
 import scanStyles from '@/styles/scan.styles'
+import { Modal, TextInput, ScrollView } from 'react-native';
 
 // Define proper types for the selected file
 type FileInfo = {
@@ -17,11 +18,18 @@ type FileInfo = {
   mimeType?: string;
 }
 
-// Config for Python backend
+const getBaseUrl = () => {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000';
+  }
+  return 'http://192.168.0.249:5000'; 
+};
+
 const API_CONFIG = {
-  baseUrl: 'http://192.168.15.84:5000', // Use your PC's IP address
-  scanEndpoint: '/scan'
-}
+  baseUrl: getBaseUrl(),
+  scanEndpoint: '/scan',
+  appendEndpoint: '/append'
+};
 
 // Dropdown options
 const SCAN_TYPES = [
@@ -35,6 +43,9 @@ export default function Scan() {
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [selectedScanType, setSelectedScanType] = useState(SCAN_TYPES[0])
   const [dropdownVisible, setDropdownVisible] = useState(false)
+  const [scannedFields, setScannedFields] = useState<any>(null);
+  const [scannedItens, setScannedItens] = useState<any[]>([]);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
 
   const selectFile = async () => {
     try {
@@ -114,92 +125,108 @@ export default function Scan() {
 
   const callPythonScript = async (fileUri: string) => {
     try {
-      const formData = new FormData();
+      const isWeb = Platform.OS === 'web';
   
-      // Pegue extensão e mimeType
-      const fileName = selectedFile?.name || 'file';
-      const ext = fileName.split('.').pop()?.toLowerCase() || '';
-      let mimeType = selectedFile?.mimeType;
-      if (!mimeType) {
-        if (ext === 'pdf') mimeType = 'application/pdf';
-        else if (ext === 'png') mimeType = 'image/png';
-        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else mimeType = 'application/octet-stream';
-      }
+      if (isWeb) {
+        // 1. Ler como base64 na web
+        const base64Data = fileUri.split(',')[1]; // remove o 'data:image/...;base64,'
   
-      // Sempre envie o arquivo assim:
-      formData.append('file', {
-        uri: fileUri,
-        name: fileName,
-        type: mimeType,
-      } as any);
+        const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.scanEndpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            image: base64Data, // campo que o backend entende
+          }),
+        });
   
-      console.log(`Sending request to ${API_CONFIG.baseUrl}${API_CONFIG.scanEndpoint}`);
-  
-      const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.scanEndpoint}`, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          Accept: 'application/json',
-          // NÃO defina Content-Type!
-        },
-      });
-  
-      return response;
-    } catch (error: any) {
-      if (
-        error &&
-        typeof error === 'object' &&
-        'message' in error &&
-        typeof error.message === 'string' &&
-        error.message.includes('Failed to fetch')
-      ) {
-        Alert.alert(
-          'Server Connection Error',
-          'Could not connect to the Python backend server. Please make sure the server is running with:\n\n' +
-          'cd c:\\Users\\Windows\\Desktop\\VScan\\ocr\n' +
-          'python extrair_nota.py',
-          [{ text: 'OK' }]
-        );
+        return response;
       } else {
-        throw error;
+        // MOBILE - usar FormData
+        const formData = new FormData();
+        const fileName = selectedFile?.name || 'file';
+        const ext = fileName.split('.').pop()?.toLowerCase() || '';
+        let mimeType = selectedFile?.mimeType;
+        if (!mimeType) {
+          if (ext === 'pdf') mimeType = 'application/pdf';
+          else if (ext === 'png') mimeType = 'image/png';
+          else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+          else mimeType = 'application/octet-stream';
+        }
+  
+        formData.append('file', {
+          uri: fileUri,
+          name: fileName,
+          type: mimeType,
+        } as any);
+  
+        const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.scanEndpoint}`, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            Accept: 'application/json',
+          },
+        });
+  
+        return response;
       }
+    } catch (error: any) {
+      console.error('Erro ao enviar para backend:', error);
+      return null;
     }
   };
+  
 
   const scanFile = async () => {
-    if (!selectedFile) return
-    
-    setIsLoading(true)
+    console.log('📸 scanFile chamado');
+    if (!selectedFile) {
+      console.log('❌ Nenhum arquivo selecionado');
+      return;
+    }
+  
+    setIsLoading(true);
+  
     try {
-      // Sempre use o uri original (com file://)
       const fileUri = selectedFile.uri;
+      console.log('🧾 URI do arquivo:', fileUri);
   
-      console.log('Scanning file:', fileUri)
-  
-      // Verifique existência do arquivo (opcional)
       if (Platform.OS !== 'web') {
-        const fileInfo = await FileSystem.getInfoAsync(fileUri)
-        if (!fileInfo.exists) {
-          throw new Error("File does not exist")
-        }
+        const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        if (!fileInfo.exists) throw new Error("File does not exist");
+      } else {
+        console.log('🌐 Rodando na web, pulando getInfoAsync');
       }
   
-      // Chame o backend
-      await callPythonScript(fileUri);
+      const response = await callPythonScript(fileUri);
+      console.log('📨 Resposta bruta recebida:', response);
   
-      Alert.alert('Success', 'File processed successfully!')
+      if (!response) {
+        console.log('❌ Resposta é null ou undefined');
+        return;
+      }
+  
+      const json = await response.json();
+      console.log('✅ JSON recebido:', json);
+  
+      if (json.success) {
+        setScannedFields(json.fields);
+        setScannedItens(json.itens);
+        console.log('🟢 Abrindo modal...');
+        setReviewModalVisible(true);
+      } else {
+        console.log('⚠️ Erro da API:', json.message);
+        Alert.alert("Erro", json.message || "Erro na extração");
+      }
     } catch (error) {
-      console.log('Error scanning file:', error)
-      Alert.alert(
-        'Processing Failed',
-        'Could not process the file. Please try again.',
-        [{ text: 'OK' }]
-      )
+      console.error('🔥 Erro durante scanFile:', error);
+      Alert.alert("Erro", "Não foi possível processar o arquivo.");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
+  
+  
 
   // Effect to automatically handle PDF viewing when a PDF is selected
   useEffect(() => {
@@ -266,7 +293,10 @@ export default function Scan() {
               <AntDesign name="close" size={24} color={COLORS.white} />
             </TouchableOpacity>
             <Text style={scanStyles.headerTitleSide}>Document Scanner</Text>
-            <TouchableOpacity onPress={scanFile} style={scanStyles.scanButton}>
+            <TouchableOpacity onPress={() => {
+              console.log('🟩 Botão "Scan It" foi clicado');
+              scanFile();
+            }} style={scanStyles.scanButton}>
               <Text style={scanStyles.scanButtonText}>Scan It</Text>
             </TouchableOpacity>
           </>
@@ -325,6 +355,108 @@ export default function Scan() {
           </View>
         )}
       </View>
+
+      <Modal visible={reviewModalVisible} animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <SafeAreaView style={{ flex: 1, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10, backgroundColor: '#f9f9f9' }}>
+            <View style={{ marginBottom: 16, alignItems: 'center' }}>
+              <Text style={{ fontSize: 24, fontWeight: 'bold' }}>📋 Revisar Dados</Text>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {scannedFields && Object.entries(scannedFields).map(([key, value]) => (
+                <View key={key} style={{ marginBottom: 16, backgroundColor: '#fff', borderRadius: 12, padding: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 2 }}>
+                  <Text style={{ fontWeight: '600', fontSize: 14, marginBottom: 4 }}>
+                    {key === 'cnpj' && '🆔 CNPJ'}
+                    {key === 'data_emissao' && '📅 Data de Emissão'}
+                    {key === 'nome_loja' && '🏢 Nome da Loja'}
+                    {key === 'valor_total' && '💰 Valor Total'}
+                  </Text>
+                  <TextInput
+                    value={typeof value === 'string' ? value : ''}
+                    onChangeText={(text) => setScannedFields((prev: any) => ({ ...prev, [key]: text }))}
+                    style={{ borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 8, backgroundColor: '#f7f7f7' }}
+                    placeholderTextColor="#aaa"
+                  />
+                </View>
+              ))}
+              {scannedItens.map((item, idx) => (
+                <View key={idx} style={{ marginBottom: 24, paddingBottom: 12, backgroundColor: '#fff', borderRadius: 12, padding: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4, elevation: 2 }}>
+                  <Text style={{ fontWeight: '600', marginBottom: 4 }}>✏️ Descrição</Text>
+                  <TextInput
+                    value={item.descricao}
+                    onChangeText={(text) => {
+                      const newItens = [...scannedItens];
+                      newItens[idx].descricao = text;
+                      setScannedItens(newItens);
+                    }}
+                    style={{ borderWidth: 1, padding: 8, borderRadius: 8, marginBottom: 8, backgroundColor: '#f7f7f7' }}
+                    placeholderTextColor="#aaa"
+                  />
+                  <Text style={{ fontWeight: '600', marginBottom: 4 }}>🔢 Quantidade</Text>
+                  <TextInput
+                    value={item.quantidade}
+                    onChangeText={(text) => {
+                      const newItens = [...scannedItens];
+                      newItens[idx].quantidade = text;
+                      setScannedItens(newItens);
+                    }}
+                    style={{ borderWidth: 1, padding: 8, borderRadius: 8, marginBottom: 8, backgroundColor: '#f7f7f7' }}
+                    placeholderTextColor="#aaa"
+                  />
+                  <Text style={{ fontWeight: '600', marginBottom: 4 }}>💲 Preço Total</Text>
+                  <TextInput
+                    value={item.preco_total}
+                    onChangeText={(text) => {
+                      const newItens = [...scannedItens];
+                      newItens[idx].preco_total = text;
+                      setScannedItens(newItens);
+                    }}
+                    style={{ borderWidth: 1, padding: 8, borderRadius: 8, backgroundColor: '#f7f7f7' }}
+                    placeholderTextColor="#aaa"
+                  />
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
+              <TouchableOpacity
+                onPress={() => setReviewModalVisible(false)}
+                style={{ padding: 14, backgroundColor: '#ff4d4d', borderRadius: 12, flex: 1, marginRight: 12 }}
+              >
+                <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }}>❌ Recusar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={async () => {
+                  setIsLoading(true);
+                  try {
+                    const res = await fetch(`${API_CONFIG.baseUrl}/append`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ fields: scannedFields, itens: scannedItens }),
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                      Alert.alert('Sucesso', 'Dados enviados para a planilha!');
+                      setReviewModalVisible(false);
+                      clearSelection();
+                    } else {
+                      Alert.alert('Erro', 'Falha ao enviar dados para a planilha.');
+                    }
+                  } catch (e) {
+                    Alert.alert('Erro', 'Erro de conexão com o backend.');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                style={{ padding: 14, backgroundColor: COLORS.primary, borderRadius: 12, flex: 1 }}
+              >
+                <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }}>✅ Confirmar</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   )
 }

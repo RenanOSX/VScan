@@ -15,7 +15,7 @@ import requests
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins="*", supports_credentials=True)
 
 # --- CONFIGURAÇÃO ---
 # Use relative paths within the project structure
@@ -248,20 +248,20 @@ def extract_endpoint():
         print(f"DEBUG: Itens extraídos: {itens}")
 
         # Sempre tenta fazer o append na planilha, mesmo se campos estiverem vazios
-        try:
-            append_result = append_to_sheet(fields, itens)
-            sheet_updated = append_result is not None
-            print(f"DEBUG: Resultado do append: {append_result}")
-        except Exception as e:
-            print(f"Erro ao atualizar planilha: {str(e)}")
-            traceback.print_exc()
-            sheet_updated = False
+        # try:
+        #     # append_result = append_to_sheet(fields, itens)
+        #     # sheet_updated = append_result is not None
+        #     # print(f"DEBUG: Resultado do append: {append_result}")
+        # except Exception as e:
+        #     print(f"Erro ao atualizar planilha: {str(e)}")
+        #     traceback.print_exc()
+        #     sheet_updated = False
         
         return jsonify({
             'success': True,
             'fields': fields, 
             'itens': itens,
-            'sheet_updated': sheet_updated
+            # 'sheet_updated': sheet_updated
         })
     
     except Exception as e:
@@ -272,6 +272,19 @@ def extract_endpoint():
             'error': str(e),
             'message': 'Falha ao processar a imagem'
         }), 500
+    
+@app.route('/append', methods=['POST'])
+def append_data():
+    try:
+        data = request.json
+        fields = data.get('fields', {})
+        itens = data.get('itens', [])
+        result = append_to_sheet(fields, itens)
+        return jsonify({"success": result is not None})
+    except Exception as e:
+        print(f"Erro ao enviar para planilha: {str(e)}")
+        return jsonify({"success": False, "error": str(e)})
+
 
 if __name__ == '__main__':
     # Em produção, use um servidor WSGI como gunicorn
