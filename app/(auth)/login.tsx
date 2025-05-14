@@ -28,7 +28,7 @@ export default function login() {
         {/* BRAND SECTION */}
         <View style={styles.brandSection}>
             <View style={styles.logoContainer}>
-                <Ionicons name='leaf' size={32} color={COLORS.primary} />
+                <Ionicons name='document-text-outline' size={32} color={COLORS.primary} />
             </View>
             <Text style={styles.appName}>VScan</Text>
             <Text style={styles.tagline}>Simple Scanner for good looking people</Text>
