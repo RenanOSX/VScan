@@ -33,8 +33,8 @@ const API_CONFIG = {
 
 // Dropdown options
 const SCAN_TYPES = [
-  { label: 'Google Vision', value: 'nota' },
-  { label: 'Tesseract', value: 'recibo' },
+  { label: 'Google Vision', value: 'google_vision' },
+  { label: 'Tesseract', value: 'tesseract' },
 ]
 
 export default function Scan() {
