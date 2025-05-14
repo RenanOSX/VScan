@@ -11,7 +11,6 @@ from google.cloud import vision_v1
 from google.protobuf.json_format import MessageToDict
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
-import requests
 from flask_cors import CORS
 
 app = Flask(__name__)
