@@ -195,7 +195,7 @@ def health_check():
 
 @app.route('/scan', methods=['POST'])
 def extract_endpoint():
-    time.sleep(10)
+    # time.sleep(10)
     try:
         print(f"Request received - Content-Type: {request.content_type}")
         print(f"Available files: {list(request.files.keys()) if request.files else 'None'}")
@@ -283,6 +283,49 @@ def append_data():
     except Exception as e:
         print(f"Erro ao enviar para planilha: {str(e)}")
         return jsonify({"success": False, "error": str(e)})
+
+
+# --- IMPORTAÇÕES DO TESSERACT ---
+import sys
+sys.path.append(os.path.join(BASE_DIR))
+from tesseract import processar_nota
+
+@app.route('/scan_tesseract', methods=['POST'])
+def scan_tesseract():
+    try:
+        f = request.files.get('file')
+        if not f:
+            if request.is_json:
+                data = request.json
+                if data and 'image' in data:
+                    img_bytes = base64.b64decode(data['image'])
+                    temp_path = os.path.join(BASE_DIR, 'temp_tesseract.png')
+                    with open(temp_path, 'wb') as temp_img:
+                        temp_img.write(img_bytes)
+                    caminho_imagem = temp_path
+                else:
+                    return jsonify({'success': False, 'error': 'No file provided'}), 400
+            else:
+                return jsonify({'success': False, 'error': 'No file provided'}), 400
+        else:
+            temp_path = os.path.join(BASE_DIR, 'temp_tesseract.png')
+            f.save(temp_path)
+            caminho_imagem = temp_path
+
+        campos = processar_nota(caminho_imagem)
+        # Adapta para o mesmo formato do Google Vision
+        fields = {
+            'data_emissao': campos.get('data_emissao'),
+            'cnpj': campos.get('cnpj'),
+            'valor_total': None,  # Tesseract não extrai valor_total por padrão
+            'nome_loja': None     # Tesseract não extrai nome_loja por padrão
+        }
+        itens = campos.get('descricao', [])
+        return jsonify({'success': True, 'fields': fields, 'itens': itens})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -22,7 +22,7 @@ const getBaseUrl = () => {
   if (Platform.OS === 'web') {
     return 'http://localhost:5000';
   }
-  return 'http://192.168.0.249:5000'; 
+  return 'http://192.168.15.84:5000'; 
 };
 
 const API_CONFIG = {
@@ -126,24 +126,25 @@ export default function Scan() {
   const callPythonScript = async (fileUri: string) => {
     try {
       const isWeb = Platform.OS === 'web';
+      // Escolhe endpoint conforme o scanType selecionado
+      const endpoint =
+        selectedScanType.value === 'tesseract'
+          ? '/scan_tesseract'
+          : '/scan';
   
       if (isWeb) {
-        // 1. Ler como base64 na web
-        const base64Data = fileUri.split(',')[1]; // remove o 'data:image/...;base64,'
-  
-        const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.scanEndpoint}`, {
+        const base64Data = fileUri.split(',')[1];
+        const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            image: base64Data, // campo que o backend entende
+            image: base64Data,
           }),
         });
-  
         return response;
       } else {
-        // MOBILE - usar FormData
         const formData = new FormData();
         const fileName = selectedFile?.name || 'file';
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -154,21 +155,20 @@ export default function Scan() {
           else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
           else mimeType = 'application/octet-stream';
         }
-  
         formData.append('file', {
           uri: fileUri,
           name: fileName,
           type: mimeType,
         } as any);
   
-        const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.scanEndpoint}`, {
+        const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
           method: 'POST',
           body: formData,
           headers: {
             Accept: 'application/json',
+            // NÃO coloque 'Content-Type' aqui!
           },
         });
-  
         return response;
       }
     } catch (error: any) {
@@ -225,7 +225,6 @@ export default function Scan() {
       setIsLoading(false);
     }
   };
-  
   
 
   // Effect to automatically handle PDF viewing when a PDF is selected
