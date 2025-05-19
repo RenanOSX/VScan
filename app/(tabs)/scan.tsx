@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, Image, SafeAreaView, Platform, Alert, ActivityIndicator, Share, KeyboardAvoidingView } from 'react-native'
+import { View, Text, TouchableOpacity, Image, SafeAreaView, Platform, Alert, ActivityIndicator, Share, KeyboardAvoidingView, Modal, TextInput, ScrollView, StatusBar } from 'react-native'
 import React, { useState, useEffect, useRef } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import { AntDesign, Ionicons } from '@expo/vector-icons'
@@ -8,7 +8,6 @@ import * as Linking from 'expo-linking'
 import { COLORS } from '@/constants/theme'
 import { router } from 'expo-router'
 import scanStyles from '@/styles/scan.styles'
-import { Modal, TextInput, ScrollView } from 'react-native';
 
 // Define proper types for the selected file
 type FileInfo = {
@@ -27,8 +26,13 @@ const getBaseUrl = () => {
 
 const API_CONFIG = {
   baseUrl: getBaseUrl(),
-  scanEndpoint: '/scan',
   appendEndpoint: '/append'
+};
+
+const getScanEndpoint = (scanType: string) => {
+  if (scanType === 'google_vision') return '/scan';
+  if (scanType === 'tesseract') return '/scan_tesseract';
+  return '/scan';
 };
 
 // Dropdown options
@@ -118,7 +122,6 @@ export default function Scan() {
       return false; // Return false to use WebView on Android
     } catch (error) {
       console.log('Error handling PDF:', error);
-      Alert.alert('PDF Viewer Error', 'Could not open the PDF file. Try selecting a different file.');
       return false;
     }
   };
@@ -126,25 +129,25 @@ export default function Scan() {
   const callPythonScript = async (fileUri: string) => {
     try {
       const isWeb = Platform.OS === 'web';
-      // Escolhe endpoint conforme o scanType selecionado
-      const endpoint =
-        selectedScanType.value === 'tesseract'
-          ? '/scan_tesseract'
-          : '/scan';
-  
+      const scanEndpoint = getScanEndpoint(selectedScanType.value);
+
       if (isWeb) {
-        const base64Data = fileUri.split(',')[1];
-        const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
+        // 1. Ler como base64 na web
+        const base64Data = fileUri.split(',')[1]; // remove o 'data:image/...;base64,'
+
+        const response = await fetch(`${API_CONFIG.baseUrl}${scanEndpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            image: base64Data,
+            image: base64Data, // campo que o backend entende
           }),
         });
+
         return response;
       } else {
+        // MOBILE - usar FormData
         const formData = new FormData();
         const fileName = selectedFile?.name || 'file';
         const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -155,20 +158,21 @@ export default function Scan() {
           else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
           else mimeType = 'application/octet-stream';
         }
+
         formData.append('file', {
           uri: fileUri,
           name: fileName,
           type: mimeType,
         } as any);
-  
-        const response = await fetch(`${API_CONFIG.baseUrl}${endpoint}`, {
+
+        const response = await fetch(`${API_CONFIG.baseUrl}${scanEndpoint}`, {
           method: 'POST',
           body: formData,
           headers: {
             Accept: 'application/json',
-            // NÃO coloque 'Content-Type' aqui!
           },
         });
+
         return response;
       }
     } catch (error: any) {
@@ -210,12 +214,17 @@ export default function Scan() {
       console.log('✅ JSON recebido:', json);
   
       if (json.success) {
-        setScannedFields(json.fields);
-        setScannedItens(json.itens);
-        console.log('🟢 Abrindo modal...');
+        if (json.results && Array.isArray(json.results) && json.results.length > 0) {
+          // PDF multipágina: pega a primeira página (ou adapte para mostrar todas)
+          setScannedFields(json.results[0].fields);
+          setScannedItens(json.results[0].itens);
+        } else {
+          // Imagem única
+          setScannedFields(json.fields);
+          setScannedItens(json.itens);
+        }
         setReviewModalVisible(true);
       } else {
-        console.log('⚠️ Erro da API:', json.message);
         Alert.alert("Erro", json.message || "Erro na extração");
       }
     } catch (error) {
@@ -225,6 +234,7 @@ export default function Scan() {
       setIsLoading(false);
     }
   };
+  
   
 
   // Effect to automatically handle PDF viewing when a PDF is selected
@@ -261,17 +271,30 @@ export default function Scan() {
 
   return (
     <SafeAreaView style={scanStyles.container}>
+      {/* Botão de Configurações */}
+      <TouchableOpacity
+        onPress={() => router.push('/settings')}
+        style={scanStyles.settingsButton}
+      >
+      <Ionicons name="settings" size={24} color={COLORS.primary} />
+      </TouchableOpacity>
+      
       {/* Dropdown Selector */}
-      <View style={scanStyles.dropdownContainer}>
+      <View style={[scanStyles.dropdownContainer]}>
         <TouchableOpacity
           style={scanStyles.dropdownButton}
-          onPress={() => setDropdownVisible(!dropdownVisible)}
+          onPress={() => setDropdownVisible(v => !v)}
           activeOpacity={0.8}
         >
           <Text style={scanStyles.dropdownButtonText}>
             {selectedScanType.label}
           </Text>
-          <AntDesign name={dropdownVisible ? 'up' : 'down'} size={18} color={COLORS.primary} style={{ marginLeft: 8 }} />
+          <AntDesign
+            name={dropdownVisible ? 'up' : 'down'}
+            size={10}
+            color={COLORS.primary}
+            style={{ marginLeft: 8 }}
+          />
         </TouchableOpacity>
         {renderDropdown()}
       </View>

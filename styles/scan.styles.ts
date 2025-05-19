@@ -80,6 +80,12 @@ const scanStyles = StyleSheet.create({
       justifyContent: 'center',
       width: '100%',
     },
+    settingsButton: {
+      marginHorizontal: 10,
+      marginTop: 26,
+      position: 'absolute',
+      right: 15,
+    },
     selectButton: {
       justifyContent: 'center',
       alignItems: 'center',
@@ -174,7 +180,8 @@ const scanStyles = StyleSheet.create({
     dropdownContainer: {
         marginHorizontal: 20,
         marginTop: 16,
-        zIndex: 20,
+        marginRight: 60,
+        position: 'sticky',
       },
       dropdownButton: {
         flexDirection: 'row',

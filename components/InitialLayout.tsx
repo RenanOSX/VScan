@@ -15,7 +15,7 @@ export default function InitialLayout() {
         
         // If user not signed in and not in auth screen, redirect to login
         if(!isSignedIn && !inAuthScreen) router.replace("/(auth)/login");
-        else if(isSignedIn && inAuthScreen) router.replace("/(tabs)/home");
+        else if(isSignedIn && inAuthScreen) router.replace("/(tabs)/scan");
     }, [isLoaded, isSignedIn, segments]);
 
     if(!isLoaded) return null;
