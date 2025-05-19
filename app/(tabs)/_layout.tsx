@@ -21,15 +21,21 @@ export default function RootLayout() {
         },
       }}>
         <Tabs.Screen
-          name="home"
+          name="settings"
           options={{
-            tabBarIcon: ({size, color}) => <Ionicons name="home" size={size} color={color} />
+            tabBarButton: () => null,
           }}
         />
         <Tabs.Screen
           name="scan"
           options={{
             tabBarIcon: ({size, color}) => <Ionicons name="add-circle" size={size} color={color} />
+          }}
+        />
+        <Tabs.Screen
+          name="home"
+          options={{
+            tabBarButton: () => null,
           }}
         />
     </Tabs>

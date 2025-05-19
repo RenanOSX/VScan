@@ -4,7 +4,9 @@ Integração com Google Sheets via OAuth2 (Service Account JSON).
 Disponibiliza endpoint Flask (/scan) para aplicativo mobile.
 Inclui debug detalhado para append na planilha e refinamento de valor_total com fallback.
 """
-import traceback, os, json, base64, time, re, requests
+
+import traceback, os, json, base64, time, re, requests, io, tempfile
+from dotenv import load_dotenv
 from statistics import mean
 from flask import Flask, request, jsonify
 from google.cloud import vision_v1
@@ -12,6 +14,7 @@ from google.protobuf.json_format import MessageToDict
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from flask_cors import CORS
+from pdf2image import convert_from_path
 
 app = Flask(__name__)
 CORS(app, origins="*", supports_credentials=True)
@@ -36,6 +39,8 @@ BASE_SHEETS_URL = (
     "/values/Página1!A1:E:append?valueInputOption=RAW"
 )
 
+load_dotenv(dotenv_path=".env.local")
+path_poppler = os.getenv('PATH_POPPLER')
 
 def ocr_document(img_bytes: bytes):
     """Executa Document Text Detection e retorna raw, texto e lista de palavras com centroides."""
@@ -195,7 +200,6 @@ def health_check():
 
 @app.route('/scan', methods=['POST'])
 def extract_endpoint():
-    # time.sleep(10)
     try:
         print(f"Request received - Content-Type: {request.content_type}")
         print(f"Available files: {list(request.files.keys()) if request.files else 'None'}")
@@ -223,7 +227,50 @@ def extract_endpoint():
                     'message': 'Por favor, forneça um arquivo para análise'
                 }), 400
         else:
-            img = f.read()
+            if f.filename.lower().endswith('.pdf') or f.mimetype == 'application/pdf':
+                print("DEBUG: PDF recebido, convertendo todas as páginas para imagens...")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+                    f.save(temp_pdf.name)
+                    temp_pdf_path = temp_pdf.name
+                # Use convert_from_path com poppler_path
+                pages = convert_from_path(
+                    temp_pdf_path,
+                    poppler_path=r"C:\Programas\poppler\poppler-24.08.0\Library\bin"
+                )
+                os.unlink(temp_pdf_path)  # Remove o arquivo temporário
+                if not pages:
+                    return jsonify({'success': False, 'error': 'PDF vazio'}), 400
+                ocr_results = []
+                for idx, page in enumerate(pages):
+                    buf = io.BytesIO()
+                    page.save(buf, format='PNG')
+                    img_bytes = buf.getvalue()
+                    try:
+                        raw, text, words = ocr_document(img_bytes)
+                        lines = group_lines_data(words)
+                        texts = lines_data_to_text(lines)
+                        fields = parse_fields(text, texts)
+                        itens = extract_items(lines)
+                        ocr_results.append({
+                            'fields': fields,
+                            'itens': itens,
+                            'page': idx + 1
+                        })
+                    except Exception as ocr_error:
+                        print(f"DEBUG: Falha no OCR na página {idx+1}: {ocr_error}")
+                        traceback.print_exc()
+                        ocr_results.append({
+                            'fields': {'data_emissao': None, 'valor_total': None, 'cnpj': None, 'nome_loja': None},
+                            'itens': [],
+                            'page': idx + 1,
+                            'error': str(ocr_error)
+                        })
+                return jsonify({
+                    'success': True,
+                    'results': ocr_results
+                })
+            else:
+                img = f.read()
         
         # OCR e extração
         try:
@@ -303,25 +350,64 @@ def scan_tesseract():
                     with open(temp_path, 'wb') as temp_img:
                         temp_img.write(img_bytes)
                     caminho_imagem = temp_path
+                    is_pdf = False
                 else:
                     return jsonify({'success': False, 'error': 'No file provided'}), 400
             else:
                 return jsonify({'success': False, 'error': 'No file provided'}), 400
         else:
-            temp_path = os.path.join(BASE_DIR, 'temp_tesseract.png')
+            is_pdf = f.filename.lower().endswith('.pdf') or f.mimetype == 'application/pdf'
+            temp_path = os.path.join(BASE_DIR, 'temp_tesseract.pdf' if is_pdf else 'temp_tesseract.png')
             f.save(temp_path)
             caminho_imagem = temp_path
 
-        campos = processar_nota(caminho_imagem)
-        # Adapta para o mesmo formato do Google Vision
-        fields = {
-            'data_emissao': campos.get('data_emissao'),
-            'cnpj': campos.get('cnpj'),
-            'valor_total': None,  # Tesseract não extrai valor_total por padrão
-            'nome_loja': None     # Tesseract não extrai nome_loja por padrão
-        }
-        itens = campos.get('descricao', [])
-        return jsonify({'success': True, 'fields': fields, 'itens': itens})
+        if is_pdf:
+            # Converte todas as páginas do PDF em imagens
+            pages = convert_from_path(
+                caminho_imagem,
+                poppler_path=PATH_POPPLER
+            )
+            os.unlink(caminho_imagem)  # Remove o PDF temporário
+            results = []
+            for idx, page in enumerate(pages):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
+                    page.save(temp_img.name, format='PNG')
+                    img_path = temp_img.name
+                try:
+                    campos = processar_nota(img_path)
+                    fields = {
+                        'data_emissao': campos.get('data_emissao'),
+                        'cnpj': campos.get('cnpj'),
+                        'valor_total': None,
+                        'nome_loja': None
+                    }
+                    itens = campos.get('descricao', [])
+                    results.append({
+                        'fields': fields,
+                        'itens': itens,
+                        'page': idx + 1
+                    })
+                except Exception as ocr_error:
+                    print(f"Erro no Tesseract na página {idx+1}: {ocr_error}")
+                    results.append({
+                        'fields': {'data_emissao': None, 'valor_total': None, 'cnpj': None, 'nome_loja': None},
+                        'itens': [],
+                        'page': idx + 1,
+                        'error': str(ocr_error)
+                    })
+                finally:
+                    os.unlink(img_path)
+            return jsonify({'success': True, 'results': results})
+        else:
+            campos = processar_nota(caminho_imagem)
+            fields = {
+                'data_emissao': campos.get('data_emissao'),
+                'cnpj': campos.get('cnpj'),
+                'valor_total': None,
+                'nome_loja': None
+            }
+            itens = campos.get('descricao', [])
+            return jsonify({'success': True, 'fields': fields, 'itens': itens})
     except Exception as e:
         import traceback
         traceback.print_exc()
