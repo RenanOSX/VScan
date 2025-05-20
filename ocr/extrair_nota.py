@@ -1,420 +1,229 @@
-"""
-OCR e extração de dados de Nota Fiscal usando Google Cloud Vision.
-Integração com Google Sheets via OAuth2 (Service Account JSON).
-Disponibiliza endpoint Flask (/scan) para aplicativo mobile.
-Inclui debug detalhado para append na planilha e refinamento de valor_total com fallback.
-"""
+from __future__ import annotations
 
-import traceback, os, json, base64, time, re, requests, io, tempfile
-from dotenv import load_dotenv
+import base64
+import io
+import json
+import os
+import re
+import tempfile
+import traceback
 from statistics import mean
-from flask import Flask, request, jsonify
-from google.cloud import vision_v1
-from google.protobuf.json_format import MessageToDict
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
+from typing import Any, Dict, List, Tuple
+
+from dotenv import load_dotenv
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+from google.auth.transport.requests import Request
+from google.cloud import vision_v1
+from google.oauth2 import service_account
+from google.protobuf.json_format import MessageToDict
 from pdf2image import convert_from_path
+import requests
 
-app = Flask(__name__)
-CORS(app, origins="*", supports_credentials=True)
-
-# --- CONFIGURAÇÃO ---
-# Use relative paths within the project structure
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "creds.json")
-SPREADSHEET_ID = '1FVcGb3GG1eii4JReZ9SVKIfKS20DW6p2oCAMQ0VHPdU'
+SPREADSHEET_ID = "1FVcGb3GG1eii4JReZ9SVKIfKS20DW6p2oCAMQ0VHPdU"
+load_dotenv(".env.local")
+PATH_POPPLER = os.getenv("PATH_POPPLER") or r"C:\\Programas\\poppler\\bin"
 
-# Inicializa clientes
-vision_client = vision_v1.ImageAnnotatorClient.from_service_account_file(
-    SERVICE_ACCOUNT_FILE
-)
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-creds = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES
-)
-# URL correto para append: especifica início em A1 e colunas até E
-BASE_SHEETS_URL = (
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SHEETS_URL = (
     f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
     "/values/Página1!A1:E:append?valueInputOption=RAW"
 )
 
-load_dotenv(dotenv_path=".env.local")
-path_poppler = os.getenv('PATH_POPPLER')
+vision_client = vision_v1.ImageAnnotatorClient.from_service_account_file(SERVICE_ACCOUNT_FILE)
+creds = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+)
 
-def ocr_document(img_bytes: bytes):
-    """Executa Document Text Detection e retorna raw, texto e lista de palavras com centroides."""
+app = Flask(__name__)
+CORS(app, origins="*")
+
+def ocr_bytes(img_bytes: bytes) -> Tuple[str, List[Dict[str, Any]]]:
     image = vision_v1.Image(content=img_bytes)
     resp = vision_client.document_text_detection(image=image)
     if resp.error.message:
         raise RuntimeError(resp.error.message)
+
     raw = MessageToDict(resp._pb)
-    text = resp.full_text_annotation.text
-    words = []
-    for page in raw.get('fullTextAnnotation', {}).get('pages', []):
-        for block in page.get('blocks', []):
-            for para in block.get('paragraphs', []):
-                for word in para.get('words', []):
-                    w = ''.join(sym.get('text', '') for sym in word.get('symbols', []))
-                    verts = word.get('boundingBox', {}).get('vertices', [])
-                    xs, ys = zip(*[(v.get('x', 0), v.get('y', 0)) for v in verts]) if verts else ([0], [0])
-                    words.append({'text': w, 'x': mean(xs), 'y': mean(ys)})
-    return raw, text, words
+    words: List[Dict[str, Any]] = []
+    for page in raw.get("fullTextAnnotation", {}).get("pages", []):
+        for block in page.get("blocks", []):
+            for para in block.get("paragraphs", []):
+                for word in para.get("words", []):
+                    text = "".join(sym.get("text", "") for sym in word.get("symbols", []))
+                    verts = word.get("boundingBox", {}).get("vertices", [])
+                    xs, ys = zip(*[(v.get("x", 0), v.get("y", 0)) for v in verts]) if verts else ([0], [0])
+                    words.append({"text": text, "x": mean(xs), "y": mean(ys)})
+    return resp.full_text_annotation.text, words
 
-
-def group_lines_data(words, y_thresh=10):
-    """Agrupa palavras em linhas baseado em proximidade vertical."""
-    lines = []
-    for w in sorted(words, key=lambda x: x['y']):
-        placed = False
+def group_lines(words: List[Dict[str, Any]], thresh: int = 10) -> List[List[Dict[str, Any]]]:
+    lines: List[List[Dict[str, Any]]] = []
+    for w in sorted(words, key=lambda x: x["y"]):
         for line in lines:
-            if abs(line['y_mean'] - w['y']) <= y_thresh:
-                line['words'].append(w)
-                line['y_mean'] = mean([ww['y'] for ww in line['words']])
-                placed = True
+            if abs(mean([i["y"] for i in line]) - w["y"]) <= thresh:
+                line.append(w)
                 break
-        if not placed:
-            lines.append({'y_mean': w['y'], 'words': [w]})
+        else:
+            lines.append([w])
     return lines
 
+def lines_to_text(lines: List[List[Dict[str, Any]]]) -> List[str]:
+    return [
+        " ".join(
+            sorted([w["text"] for w in line], key=lambda t: next(x["x"] for x in line if x["text"] == t))
+        )
+        for line in lines
+    ]
 
-def lines_data_to_text(lines_data):
-    """Converte linhas agrupadas em lista de strings ordenadas por posição X."""
-    return [' '.join(w['text'] for w in sorted(line['words'], key=lambda w: w['x']))
-            for line in lines_data]
-
-
-def parse_fields(text, lines_text):
-    """Extrai data_emissao, valor_total, cnpj e nome_loja com fallback de próxima linha."""
-    res = {'data_emissao': None, 'valor_total': None, 'cnpj': None, 'nome_loja': None}
-    # Nome da loja
-    m = re.search(r'Recebemos\s+de\s+(.+?)\s+OS PRODUTOS', text, re.IGNORECASE)
-    if m:
-        res['nome_loja'] = m.group(1).strip()
-    # Data de emissão
-    m = re.search(r'Data\s+emiss[ãa]o[:\-]?\s*(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})',
-                  text, re.IGNORECASE)
-    if not m:
-        m = re.search(r'(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})', text)
-    if m:
-        res['data_emissao'] = m.group(1)
-    # Valor total: rótulos e fallback
-    labels = ['valor total da nota', 'valor total dos produtos', 'valor total dos serviços']
-    for i, ln in enumerate(lines_text):
-        low = ln.lower()
-        if any(label in low for label in labels):
-            nums = re.findall(r'(\d+[\d\.,]*\d*)', ln)
+def parse_fields(full_text: str, lines: List[str]) -> Dict[str, Any]:
+    data: Dict[str, Any] = {
+        "data_emissao": None,
+        "valor_total": None,
+        "cnpj": None,
+        "nome_loja": None,
+    }
+    if m := re.search(r"(\d{2}[\/-]\d{2}[\/-]\d{2,4})", full_text):
+        data["data_emissao"] = m.group(1)
+    if cnpj := re.search(r"(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})", full_text):
+        data["cnpj"] = cnpj.group(1)
+    for i, ln in enumerate(lines):
+        if "valor total" in ln.lower():
+            nums = re.findall(r"\d+[\d\.,]*\d*", ln) or (
+                re.findall(r"\d+[\d\.,]*\d*", lines[i + 1]) if i + 1 < len(lines) else []
+            )
             if nums:
-                res['valor_total'] = nums[-1]
-            else:
-                # fallback na próxima linha
-                if i+1 < len(lines_text):
-                    nums2 = re.findall(r'(\d+[\d\.,]*\d*)', lines_text[i+1])
-                    if nums2:
-                        res['valor_total'] = nums2[-1]
+                data["valor_total"] = nums[-1]
             break
-    # CNPJ
-    m = re.search(r'(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})', text)
-    if m:
-        res['cnpj'] = m.group(1)
-    return res
+    return data
 
-
-def extract_items(lines_data):
-    """Extrai itens com descricao, quantidade e preco_total via divisão."""
-    texts = lines_data_to_text(lines_data)
-    idx = next((i for i, ln in enumerate(texts)
-                if 'itens da nota fiscal' in ln.lower()), None)
-    if idx is None:
+def parse_items(lines: List[List[Dict[str, Any]]]) -> List[Dict[str, str]]:
+    txt_lines = lines_to_text(lines)
+    start = next((i for i, l in enumerate(txt_lines) if "itens" in l.lower()), None)
+    if start is None:
         return []
-    items = []
-    for line in lines_data[idx+2:]:
-        first = line['words'][0]['text'].lower() if line['words'] else ''
-        if first.startswith('cálculo'):
-            break
-        words = sorted(line['words'], key=lambda w: w['x'])
-        toks = [w['text'] for w in words]
-        prices = [t for t in toks if re.match(r'^[\d\.]+,\d{2}$', t)]
+    items: List[Dict[str, str]] = []
+    for ln in txt_lines[start + 2:]:
+        parts = ln.split()
+        prices = [p for p in parts if re.match(r"^[\d\.]+,\d{2}$", p)]
         if len(prices) < 2:
             continue
-        unit_str, total_str = prices[0], prices[1]
+        unit, total = prices[:2]
         try:
-            u = float(unit_str.replace('.', '').replace(',', '.'))
-            tval = float(total_str.replace('.', '').replace(',', '.'))
-            quantidade = str(int(round(tval / u)))
-        except:
-            continue
-        try:
-            di = toks.index(unit_str)
-            descricao = ' '.join(toks[:di])
-        except:
-            descricao = ' '.join(toks)
-        items.append({'descricao': descricao,
-                      'quantidade': quantidade,
-                      'preco_total': total_str})
+            qty = str(
+                int(
+                    round(
+                        float(total.replace(".", "").replace(",", ".")) /
+                        float(unit.replace(".", "").replace(",", "."))
+                    )
+                )
+            )
+        except ZeroDivisionError:
+            qty = "1"
+        desc = " ".join(parts[:parts.index(unit)])
+        items.append({"descricao": desc, "quantidade": qty, "preco_total": total})
     return items
 
-
-def append_to_sheet(fields, itens):
-    """Anexa dados ao Google Sheets via OAuth2 da Service Account com debug."""
+def append_sheet(fields: Dict[str, Any], items: List[Dict[str, str]]) -> bool:
     try:
         creds.refresh(Request())
-        token = creds.token
         headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
+            "Authorization": f"Bearer {creds.token}",
+            "Content-Type": "application/json",
         }
-        row = [
-            fields.get('data_emissao'),
-            fields.get('valor_total'),
-            fields.get('cnpj'),
-            fields.get('nome_loja'),
-            json.dumps(itens, ensure_ascii=False)
-        ]
-        body = {'values': [row]}
-        print('DEBUG: POST', BASE_SHEETS_URL)
-        print('DEBUG: Body', json.dumps(body, ensure_ascii=False))
-        response = requests.post(BASE_SHEETS_URL,
-                                 headers=headers, json=body)
-        print('DEBUG: Status', response.status_code)
-        print('DEBUG: Response', response.text)
-        response.raise_for_status()
-        
-        # Parse and log the successful response
-        if response.status_code == 200:
-            result = response.json()
-            print(f"SUCCESS: Data appended to sheet at {result.get('updates', {}).get('updatedRange', 'unknown')}")
-            print(f"Updated {result.get('updates', {}).get('updatedRows', 0)} rows")
-        
-        return response.json()
+        body = {
+            "values": [
+                [
+                    fields.get("data_emissao"),
+                    fields.get("valor_total"),
+                    fields.get("cnpj"),
+                    fields.get("nome_loja"),
+                    json.dumps(items, ensure_ascii=False),
+                ]
+            ]
+        }
+        res = requests.post(SHEETS_URL, headers=headers, json=body)
+        print('DEBUG: Body enviado ao Sheets:', json.dumps(body, ensure_ascii=False))
+        print('DEBUG: Status da resposta:', res.status_code)
+        print('DEBUG: Texto da resposta:', res.text)
+        res.raise_for_status()
+        return True
     except Exception:
-        print('ERROR appending to sheet:')
-        print(traceback.format_exc())
-        return None
-
-
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Endpoint para verificar se a API está online."""
-    return jsonify({"status": "ok", "message": "API de extração de notas está funcionando!"})
-
-@app.route('/scan', methods=['POST'])
-def extract_endpoint():
-    try:
-        print(f"Request received - Content-Type: {request.content_type}")
-        print(f"Available files: {list(request.files.keys()) if request.files else 'None'}")
-        print(f"Available form data: {list(request.form.keys()) if request.form else 'None'}")
-        
-        f = request.files.get('file')
-        if not f:
-            # Se não houver arquivo, verifica se há dados em base64
-            if request.is_json:
-                data = request.json
-                if data and 'image' in data:
-                    img = base64.b64decode(data['image'])
-                else:
-                    print("DEBUG: Nenhum arquivo enviado no JSON.")
-                    return jsonify({
-                        'success': False,
-                        'error': 'No file provided in JSON',
-                        'message': 'Por favor, forneça um arquivo para análise'
-                    }), 400
-            else:
-                print(f"DEBUG: Nenhum arquivo enviado. Content-Type: {request.content_type}")
-                return jsonify({
-                    'success': False,
-                    'error': f'No file provided. Content-Type: {request.content_type}',
-                    'message': 'Por favor, forneça um arquivo para análise'
-                }), 400
-        else:
-            if f.filename.lower().endswith('.pdf') or f.mimetype == 'application/pdf':
-                print("DEBUG: PDF recebido, convertendo todas as páginas para imagens...")
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-                    f.save(temp_pdf.name)
-                    temp_pdf_path = temp_pdf.name
-                # Use convert_from_path com poppler_path
-                pages = convert_from_path(
-                    temp_pdf_path,
-                    poppler_path=r"C:\Programas\poppler\poppler-24.08.0\Library\bin"
-                )
-                os.unlink(temp_pdf_path)  # Remove o arquivo temporário
-                if not pages:
-                    return jsonify({'success': False, 'error': 'PDF vazio'}), 400
-                ocr_results = []
-                for idx, page in enumerate(pages):
-                    buf = io.BytesIO()
-                    page.save(buf, format='PNG')
-                    img_bytes = buf.getvalue()
-                    try:
-                        raw, text, words = ocr_document(img_bytes)
-                        lines = group_lines_data(words)
-                        texts = lines_data_to_text(lines)
-                        fields = parse_fields(text, texts)
-                        itens = extract_items(lines)
-                        ocr_results.append({
-                            'fields': fields,
-                            'itens': itens,
-                            'page': idx + 1
-                        })
-                    except Exception as ocr_error:
-                        print(f"DEBUG: Falha no OCR na página {idx+1}: {ocr_error}")
-                        traceback.print_exc()
-                        ocr_results.append({
-                            'fields': {'data_emissao': None, 'valor_total': None, 'cnpj': None, 'nome_loja': None},
-                            'itens': [],
-                            'page': idx + 1,
-                            'error': str(ocr_error)
-                        })
-                return jsonify({
-                    'success': True,
-                    'results': ocr_results
-                })
-            else:
-                img = f.read()
-        
-        # OCR e extração
-        try:
-            raw, text, words = ocr_document(img)
-            lines = group_lines_data(words)
-            texts = lines_data_to_text(lines)
-            fields = parse_fields(text, texts)
-            itens = extract_items(lines)
-        except Exception as ocr_error:
-            print("DEBUG: Falha no OCR ou extração:", ocr_error)
-            traceback.print_exc()
-            # Se falhar, ainda assim tenta enviar campos vazios
-            fields = {'data_emissao': None, 'valor_total': None, 'cnpj': None, 'nome_loja': None}
-            itens = []
-        
-        # Validação extra: se todos os campos estão vazios, loga
-        if not any(fields.values()):
-            print("DEBUG: Todos os campos extraídos estão vazios.")
-        else:
-            print(f"DEBUG: Campos extraídos: {fields}")
-        print(f"DEBUG: Itens extraídos: {itens}")
-
-        # Sempre tenta fazer o append na planilha, mesmo se campos estiverem vazios
-        # try:
-        #     # append_result = append_to_sheet(fields, itens)
-        #     # sheet_updated = append_result is not None
-        #     # print(f"DEBUG: Resultado do append: {append_result}")
-        # except Exception as e:
-        #     print(f"Erro ao atualizar planilha: {str(e)}")
-        #     traceback.print_exc()
-        #     sheet_updated = False
-        
-        return jsonify({
-            'success': True,
-            'fields': fields, 
-            'itens': itens,
-            # 'sheet_updated': sheet_updated
-        })
-    
-    except Exception as e:
-        print(f"Erro na extração: {str(e)}")
+        print('ERRO ao tentar enviar para o Google Sheets:')
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'message': 'Falha ao processar a imagem'
-        }), 500
-    
-@app.route('/append', methods=['POST'])
-def append_data():
+        return False
+
+def img_from_request() -> Tuple[bytes | None, bool]:
+    f = request.files.get("file")
+    if f:
+        is_pdf = f.filename.lower().endswith(".pdf") or f.mimetype == "application/pdf"
+        return f.read(), is_pdf
+    if request.is_json and (b64 := request.json.get("image")):
+        return base64.b64decode(b64), False
+    return None, False
+
+@app.get("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+@app.post("/scan")
+def scan():
+    img, is_pdf = img_from_request()
+    if img is None:
+        print("DEBUG: Nenhuma imagem encontrada na requisição.")
+        return jsonify({"success": False, "error": "no_file"}), 400
+
     try:
-        data = request.json
-        fields = data.get('fields', {})
-        itens = data.get('itens', [])
-        result = append_to_sheet(fields, itens)
-        return jsonify({"success": result is not None})
-    except Exception as e:
-        print(f"Erro ao enviar para planilha: {str(e)}")
-        return jsonify({"success": False, "error": str(e)})
-
-
-# --- IMPORTAÇÕES DO TESSERACT ---
-import sys
-sys.path.append(os.path.join(BASE_DIR))
-from tesseract import processar_nota
-
-@app.route('/scan_tesseract', methods=['POST'])
-def scan_tesseract():
-    try:
-        f = request.files.get('file')
-        if not f:
-            if request.is_json:
-                data = request.json
-                if data and 'image' in data:
-                    img_bytes = base64.b64decode(data['image'])
-                    temp_path = os.path.join(BASE_DIR, 'temp_tesseract.png')
-                    with open(temp_path, 'wb') as temp_img:
-                        temp_img.write(img_bytes)
-                    caminho_imagem = temp_path
-                    is_pdf = False
-                else:
-                    return jsonify({'success': False, 'error': 'No file provided'}), 400
-            else:
-                return jsonify({'success': False, 'error': 'No file provided'}), 400
-        else:
-            is_pdf = f.filename.lower().endswith('.pdf') or f.mimetype == 'application/pdf'
-            temp_path = os.path.join(BASE_DIR, 'temp_tesseract.pdf' if is_pdf else 'temp_tesseract.png')
-            f.save(temp_path)
-            caminho_imagem = temp_path
-
+        print(f"DEBUG: Tipo do arquivo: {'PDF' if is_pdf else 'Imagem'}")
         if is_pdf:
-            # Converte todas as páginas do PDF em imagens
-            pages = convert_from_path(
-                caminho_imagem,
-                poppler_path=PATH_POPPLER
-            )
-            os.unlink(caminho_imagem)  # Remove o PDF temporário
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(img)
+                tmp.flush()
+                pages = convert_from_path(tmp.name, poppler_path=PATH_POPPLER)
             results = []
-            for idx, page in enumerate(pages):
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
-                    page.save(temp_img.name, format='PNG')
-                    img_path = temp_img.name
-                try:
-                    campos = processar_nota(img_path)
-                    fields = {
-                        'data_emissao': campos.get('data_emissao'),
-                        'cnpj': campos.get('cnpj'),
-                        'valor_total': None,
-                        'nome_loja': None
-                    }
-                    itens = campos.get('descricao', [])
-                    results.append({
-                        'fields': fields,
-                        'itens': itens,
-                        'page': idx + 1
-                    })
-                except Exception as ocr_error:
-                    print(f"Erro no Tesseract na página {idx+1}: {ocr_error}")
-                    results.append({
-                        'fields': {'data_emissao': None, 'valor_total': None, 'cnpj': None, 'nome_loja': None},
-                        'itens': [],
-                        'page': idx + 1,
-                        'error': str(ocr_error)
-                    })
-                finally:
-                    os.unlink(img_path)
-            return jsonify({'success': True, 'results': results})
+            for i, page in enumerate(pages, 1):
+                buf = io.BytesIO(); page.save(buf, format="PNG")
+                fields, items = _process_image(buf.getvalue())
+                results.append({"page": i, "fields": fields, "itens": items})
+            return jsonify({'success': True, 'fields': fields, 'itens': items})
         else:
-            campos = processar_nota(caminho_imagem)
-            fields = {
-                'data_emissao': campos.get('data_emissao'),
-                'cnpj': campos.get('cnpj'),
-                'valor_total': None,
-                'nome_loja': None
-            }
-            itens = campos.get('descricao', [])
-            return jsonify({'success': True, 'fields': fields, 'itens': itens})
+            fields, items = _process_image(img)
+            return jsonify({"success": True, "fields": fields, "itens": items})
     except Exception as e:
-        import traceback
+        print("ERRO durante o processamento da imagem/PDF:", str(e))
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def _process_image(img: bytes) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
+    text, words = ocr_bytes(img)
+    print('DEBUG: Texto extraído do OCR:', text[:200])
+    lines = group_lines(words)
+    text_lines = lines_to_text(lines)
+    fields = parse_fields(text, text_lines)
+    items = parse_items(lines)
+    print('DEBUG: Campos extraídos:', fields)
+    print('DEBUG: Itens extraídos:', items)
+    return fields, items
+
+@app.post("/append")
+def append():
+    try:
+        data = request.get_json()
+        print("DEBUG: JSON recebido:", json.dumps(data, ensure_ascii=False, indent=2))
+        fields = data.get("fields")
+        items = data.get("itens")
+
+        if not isinstance(fields, dict) or not isinstance(items, list):
+            print("DEBUG: Campos ou itens com tipos inválidos")
+            return jsonify({"success": False, "error": "Formato inválido para fields ou items"}), 400
+
+        ok = append_sheet(fields, items)
+        return jsonify({"success": ok}), 200 if ok else 500
+    except Exception as e:
+        print("ERRO na rota /append:", str(e))
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Em produção, use um servidor WSGI como gunicorn
-    # Para desenvolvimento/teste, use:
     app.run(host='0.0.0.0', port=5000, debug=True)
