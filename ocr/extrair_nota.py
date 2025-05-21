@@ -122,13 +122,17 @@ def parse_items(lines: List[List[Dict[str, Any]]]) -> List[Dict[str, str]]:
         items.append({"descricao": desc, "quantidade": qty, "preco_total": total})
     return items
 
-def append_sheet(fields: Dict[str, Any], items: List[Dict[str, str]]) -> bool:
+def append_sheet(fields: Dict[str, Any], items: List[Dict[str, str]], spreadsheet_id: str) -> bool:
     try:
         creds.refresh(Request())
         headers = {
             "Authorization": f"Bearer {creds.token}",
             "Content-Type": "application/json",
         }
+        SHEETS_URL = (
+            f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
+            "/values/Página1!A1:E:append?valueInputOption=RAW"
+        )
         body = {
             "values": [
                 [
@@ -207,21 +211,26 @@ def _process_image(img: bytes) -> Tuple[Dict[str, Any], List[Dict[str, str]]]:
 def append():
     try:
         data = request.get_json()
-        print("DEBUG: JSON recebido:", json.dumps(data, ensure_ascii=False, indent=2))
         fields = data.get("fields")
         items = data.get("itens")
+        sheet_url = data.get("sheetUrl")
 
-        if not isinstance(fields, dict) or not isinstance(items, list):
-            print("DEBUG: Campos ou itens com tipos inválidos")
-            return jsonify({"success": False, "error": "Formato inválido para fields ou items"}), 400
+        # Extract spreadsheet ID from sheet_url
+        spreadsheet_id = None
+        if sheet_url:
+            import re
+            m = re.search(r"/d/([a-zA-Z0-9-_]+)", sheet_url)
+            if m:
+                spreadsheet_id = m.group(1)
+        if not spreadsheet_id:
+            return jsonify({"success": False, "error": "Invalid sheetUrl"}), 400
 
-        ok = append_sheet(fields, items)
+        # Use spreadsheet_id instead of SPREADSHEET_ID
+        ok = append_sheet(fields, items, spreadsheet_id)
         return jsonify({"success": ok}), 200 if ok else 500
     except Exception as e:
-        print("ERRO na rota /append:", str(e))
-        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
 # Tesseract
 
 def melhorar_imagem(caminho_imagem):

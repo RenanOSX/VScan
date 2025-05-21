@@ -55,15 +55,15 @@ export const callBackend = async (file: FileInfo, scanType: ScanType) => {
   }
 };
 
-export const appendData = async (fields: any, itens: any[]) => {
+export const appendData = async (fields: any, items: any[], sheetUrl: string) => {
   try {
     const res = await fetch(`${BASE_URL}${ENDPOINTS.append}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields, itens }),
+      body: JSON.stringify({ fields, itens: items, sheetUrl }),
     });
     const json = await res.json();
-    return !!json.success;
+    return json.success;
   } catch {
     return false;
   }
