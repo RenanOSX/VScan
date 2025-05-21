@@ -1,15 +1,8 @@
 from __future__ import annotations
 
-import base64
-import io
-import json
-import os
-import re
-import tempfile
-import traceback
+import base64, io, json, os, re, tempfile, traceback, pytesseract, requests, cv2
 from statistics import mean
 from typing import Any, Dict, List, Tuple
-
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -18,13 +11,17 @@ from google.cloud import vision_v1
 from google.oauth2 import service_account
 from google.protobuf.json_format import MessageToDict
 from pdf2image import convert_from_path
-import requests
+from datetime import datetime
+from PIL import Image
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "creds.json")
 SPREADSHEET_ID = "1FVcGb3GG1eii4JReZ9SVKIfKS20DW6p2oCAMQ0VHPdU"
 load_dotenv(".env.local")
-PATH_POPPLER = os.getenv("PATH_POPPLER") or r"C:\\Programas\\poppler\\bin"
+try:
+    PATH_POPPLER = os.getenv("PATH_POPPLER")
+except FileNotFoundError:
+    print("ERRO: Variável de ambiente PATH_POPPLER não encontrada.")
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEETS_URL = (
@@ -224,6 +221,163 @@ def append():
         print("ERRO na rota /append:", str(e))
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+    
+# Tesseract
+
+def melhorar_imagem(caminho_imagem):
+    img = cv2.imread(caminho_imagem, cv2.IMREAD_GRAYSCALE)
+    img = cv2.bilateralFilter(img, 9, 75, 75)
+    img = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                cv2.THRESH_BINARY, 31, 2)
+    img = cv2.resize(img, (img.shape[1]*2, img.shape[0]*2), interpolation=cv2.INTER_CUBIC)
+    return Image.fromarray(img)
+
+def extrair_texto(imagem_pil):
+    return pytesseract.image_to_string(imagem_pil, lang='por', config='--psm 6')
+
+def limpar_texto(texto):
+    return texto.replace('|', ' ').replace('│', ' ').replace('┤', ' ')
+
+def _f(v):
+    return float(v.replace('.', '').replace(',', '.')) if v else None
+
+def _data_iso(data_br):
+    try:
+        return datetime.strptime(data_br, "%d/%m/%Y").date().isoformat()
+    except:
+        return data_br
+
+def extrair_campos(texto):
+    resultado = {}
+    cnpj_match = re.search(r"(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})", texto)
+    resultado['cnpj'] = cnpj_match.group(1) if cnpj_match else None
+    data_match = re.search(r"Data.{0,5}miss[a-z]?[oã]?\s*[:\-]?\s*(\d{2}/\d{2}/\d{4})", texto, re.IGNORECASE)
+    if not data_match:
+        datas = re.findall(r"\d{2}/\d{2}/\d{4}", texto)
+        resultado['data_emissao'] = _data_iso(datas[-1]) if datas else None
+    else:
+        resultado['data_emissao'] = _data_iso(data_match.group(1))
+
+    resultado['descricao'] = []
+    linhas = texto.splitlines()
+    capturando = False
+
+    for linha in linhas:
+        linha = limpar_texto(linha.strip())
+        if not linha:
+            continue
+
+        if not capturando and all(p in linha.lower() for p in ['descricao', 'cst', 'cfop']):
+            capturando = True
+            continue
+
+        if capturando:
+            partes = re.split(r'\s{2,}|\s\|\s|[|│]', linha)
+            partes = [p.strip() for p in partes if p.strip()]
+            if len(partes) >= 14:
+                item = {
+                    'codigo': partes[0],
+                    'descricao': partes[1],
+                    'ncm': partes[2],
+                    'cst': partes[3],
+                    'cfop': partes[4],
+                    'un': partes[5],
+                    'qtde': _f(partes[6]),
+                    'preco_unit': _f(partes[7]),
+                    'preco_total': _f(partes[8]),
+                    'base_icms': _f(partes[9]),
+                    'valor_icms': _f(partes[10]),
+                    'valor_ipi': _f(partes[11]),
+                    'perc_icms': _f(partes[12]),
+                    'perc_ipi': _f(partes[13])
+                }
+                resultado['descricao'].append(item)
+
+    return resultado
+
+def processar_nota(caminho_imagem):
+    imagem = melhorar_imagem(caminho_imagem)
+    texto = extrair_texto(imagem)
+    campos = extrair_campos(texto)
+    return campos
+
+@app.route('/scan_tesseract', methods=['POST'])
+def scan_tesseract():
+    try:
+        # Recebe arquivo ou imagem base64
+        f = request.files.get('file')
+        is_pdf = False
+        temp_path = None
+
+        if f:
+            is_pdf = f.filename.lower().endswith('.pdf') or f.mimetype == 'application/pdf'
+            temp_path = os.path.join(BASE_DIR, 'temp_tesseract.pdf' if is_pdf else 'temp_tesseract.png')
+            f.save(temp_path)
+        elif request.is_json:
+            data = request.get_json()
+            if data and 'image' in data:
+                img_bytes = base64.b64decode(data['image'])
+                temp_path = os.path.join(BASE_DIR, 'temp_tesseract.png')
+                with open(temp_path, 'wb') as temp_img:
+                    temp_img.write(img_bytes)
+                is_pdf = False
+            else:
+                return jsonify({'success': False, 'error': 'No file or image provided'}), 400
+        else:
+            return jsonify({'success': False, 'error': 'No file or image provided'}), 400
+
+        results = []
+
+        if is_pdf:
+            # Converte PDF em imagens
+            pages = convert_from_path(
+                temp_path,
+                poppler_path=PATH_POPPLER
+            )
+            os.unlink(temp_path)  # Remove o PDF temporário
+            for idx, page in enumerate(pages):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
+                    page.save(temp_img.name, format='PNG')
+                    img_path = temp_img.name
+                try:
+                    campos = processar_nota(img_path)
+                    fields = {
+                        'data_emissao': campos.get('data_emissao'),
+                        'cnpj': campos.get('cnpj'),
+                        'valor_total': campos.get('valor_total'),
+                        'nome_loja': campos.get('nome_loja')
+                    }
+                    itens = campos.get('itens', [])
+                    results.append({
+                        'fields': fields,
+                        'itens': itens,
+                        'page': idx + 1
+                    })
+                except Exception as ocr_error:
+                    print(f"Erro no Tesseract na página {idx+1}: {ocr_error}")
+                    results.append({
+                        'fields': {'data_emissao': None, 'valor_total': None, 'cnpj': None, 'nome_loja': None},
+                        'itens': [],
+                        'page': idx + 1,
+                        'error': str(ocr_error)
+                    })
+                finally:
+                    os.unlink(img_path)
+            return jsonify({'success': True, 'results': results})
+        else:
+            campos = processar_nota(temp_path)
+            fields = {
+                'data_emissao': campos.get('data_emissao'),
+                'cnpj': campos.get('cnpj'),
+                'valor_total': campos.get('valor_total'),
+                'nome_loja': campos.get('nome_loja')
+            }
+            itens = campos.get('itens', [])
+            os.unlink(temp_path)
+            return jsonify({'success': True, 'fields': fields, 'itens': itens})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
