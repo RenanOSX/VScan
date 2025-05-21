@@ -16,27 +16,41 @@ import {
 } from 'react-native'
 import * as Linking from 'expo-linking'
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+import { useRouter, useFocusEffect } from 'expo-router'
 import { homeStyles } from '@/styles/home.styles'
 import { COLORS } from '@/constants/theme'
-//import Clipboard from '@react-native-clipboard/clipboard'
-import scanStyles from '@/styles/scan.styles'
+import * as FileSystem from 'expo-file-system';
+
+const OPTIONS_PATH = FileSystem.documentDirectory + 'options.json';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [text, setText] = useState('');
+  const [currentSheetUrl, setCurrentSheetUrl] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  /*const copiarEmail = () => {
-  try {
-    Clipboard.setString('sheet-writer@ninth-sol-457700-t8.iam.gserviceaccount.com');
-    Alert.alert('Sucesso', 'Texto copiado com sucesso!');
-  } catch (error) {
-    console.error('Erro ao copiar para a área de transferência:', error);
-    Alert.alert('Erro', 'Falha ao copiar texto.');
-  }
-};*/
+  // Carrega o link atual ao entrar na tela
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadSheetUrl = async () => {
+        try {
+          const path = OPTIONS_PATH;
+          const exists = await FileSystem.getInfoAsync(path);
+          if (exists.exists) {
+            const content = await FileSystem.readAsStringAsync(path);
+            const options = JSON.parse(content);
+            setCurrentSheetUrl(options.sheetUrl && options.sheetUrl.trim() !== "" ? options.sheetUrl : null);
+          } else {
+            setCurrentSheetUrl(null);
+          }
+        } catch {
+          setCurrentSheetUrl(null);
+        }
+      };
+      loadSheetUrl();
+    }, [])
+  );
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -57,12 +71,26 @@ export default function SettingsScreen() {
     return null
   }
 
-  const handleSearch = () => {
-    const url = extractSheetUrl(text.trim())
+  const saveSheetUrl = async (url: string) => {
+    try {
+      const data = { sheetUrl: url };
+      await FileSystem.writeAsStringAsync(OPTIONS_PATH, JSON.stringify(data, null, 2));
+      setCurrentSheetUrl(url); // Atualiza o estado imediatamente
+      setText(''); // Limpa o campo de input após conectar
+      Alert.alert('Sucesso', 'Link salvo com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar o link:', error);
+      Alert.alert('Erro', 'Falha ao salvar o link.');
+    }
+  };
+
+  const handleSearch = async () => {
+    const url = extractSheetUrl(text.trim());
     if (url) {
+      await saveSheetUrl(url); // Save to options.json
       Linking.openURL(url).catch(err =>
         console.error('Failed to open URL:', err)
-      )
+      );
     } else {
       Alert.alert(
         'Link inválido',
@@ -70,6 +98,22 @@ export default function SettingsScreen() {
       )
     }
   }
+
+  // Função para limpar a planilha conectada
+  const clearSheetUrl = async () => {
+    if (!currentSheetUrl) {
+      Alert.alert('Nenhuma planilha conectada', 'Não existe nenhuma planilha conectada atualmente.');
+      return;
+    }
+    try {
+      await FileSystem.writeAsStringAsync(OPTIONS_PATH, JSON.stringify({ sheetUrl: "" }, null, 2));
+      setCurrentSheetUrl(null);
+      setText('');
+      Alert.alert('Planilha desconectada!');
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível limpar a planilha.');
+    }
+  };
 
   const onPressIn = () => {
     Animated.spring(scaleAnim, {
@@ -122,6 +166,65 @@ export default function SettingsScreen() {
                 selectionColor={COLORS.primary}
               />
             </View>
+            {/* Exibe o link atual */}
+            {currentSheetUrl && (
+              <View
+              style={{
+                backgroundColor: '#23272f',
+                borderRadius: 10,
+                padding: 14,
+                marginHorizontal: 24,
+                marginBottom: 18,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+              }}
+              >
+              <Ionicons name="information-circle-outline" size={22} color={COLORS.primary} style={{ marginRight: 8 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: COLORS.white, fontWeight: 'bold', marginBottom: 2, fontSize: 15 }}>
+                Planilha conectada:
+                </Text>
+                <TouchableOpacity onPress={() => Linking.openURL(currentSheetUrl)}>
+                <Text
+                  selectable
+                  numberOfLines={2}
+                  ellipsizeMode="middle"
+                  style={{
+                  color: COLORS.primary,
+                  fontSize: 14,
+                  backgroundColor: '#181c22',
+                  borderRadius: 6,
+                  padding: 7,
+                  fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                  textDecorationLine: 'underline',
+                  }}
+                >
+                  {currentSheetUrl}
+                </Text>
+                </TouchableOpacity>
+              </View>
+              </View>
+            )}
+            {!currentSheetUrl && (
+              <View
+              style={{
+                backgroundColor: '#23272f',
+                borderRadius: 10,
+                padding: 14,
+                marginHorizontal: 24,
+                marginBottom: 18,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+              }}
+              >
+              <Ionicons name="alert-circle-outline" size={22} color={COLORS.grey} style={{ marginRight: 8 }} />
+              <Text style={{ color: COLORS.grey, fontSize: 15 }}>
+                Nenhuma planilha conectada.
+              </Text>
+              </View>
+            )}
 
             {/* Botão de abrir planilha */}
             <Animated.View
@@ -137,7 +240,7 @@ export default function SettingsScreen() {
                 onPressIn={onPressIn}
                 onPressOut={onPressOut}
               >
-                <Text style={homeStyles.buttonText}>Abrir Planilha</Text>
+                <Text style={homeStyles.buttonText}>Conectar Planilha</Text>
               </Pressable>
             </Animated.View>
 
@@ -150,11 +253,29 @@ export default function SettingsScreen() {
             ]}
             >
             Para garantir o correto funcionamento da sincronização, é necessário que você permita e dê acesso de editor para a seguinte conta no google sheets:{' '}
-            <Text style={{ color: 'lightblue' }}>
+            <Text style={{ color: COLORS.primary }}>
                 sheet-writer@ninth-sol-457700-t8.iam.gserviceaccount.com
             </Text>
-            {' '}AVISO: É necessário para as edições serem feitas no documento.
+            {"\n"}
+            {"\n"}
+            AVISO: É necessário para as edições serem feitas no documento.
             </Text>
+
+            {/* Botão para limpar a planilha conectada */}
+            <Animated.View
+              style={{
+                alignSelf: 'stretch',
+                marginTop: 8,
+                marginBottom: 8,
+                alignItems: 'center',
+              }}
+            >
+              <Pressable onPress={clearSheetUrl}>
+                <Text style={{ color: COLORS.primary, textDecorationLine: 'underline', fontSize: 15 }}>
+                  Limpar planilha conectada
+                </Text>
+              </Pressable>
+            </Animated.View>
 
           </Animated.View>
         </TouchableWithoutFeedback>

@@ -26,6 +26,8 @@ const SCAN_OPTIONS: { label: string; value: ScanType }[] = [
   { label: 'Tesseract', value: 'tesseract' },
 ];
 
+const OPTIONS_PATH = FileSystem.documentDirectory + 'options.json';
+
 const formatCNPJ = (v: string) =>
   v
     .replace(/\D/g, '')
@@ -43,6 +45,20 @@ const formatDate = (v: string) =>
     .slice(0, 8)
     .replace(/(\d{2})(\d)/, '$1/$2')
     .replace(/(\d{2})(\d)/, '$1/$2');
+
+// Helper to get sheetUrl from options.json
+const getSheetUrl = async (): Promise<string | null> => {
+  try {
+    const content = await FileSystem.readAsStringAsync(OPTIONS_PATH);
+    const options = JSON.parse(content);
+    if (options.sheetUrl && options.sheetUrl.trim() !== "") {
+      return options.sheetUrl;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 export default function Scan() {
   const [file, setFile] = useState<FileInfo | null>(null);
@@ -76,9 +92,23 @@ export default function Scan() {
     if (!file) return;
     setLoading(true);
     try {
+      // Check for sheetUrl before scanning
+      const sheetUrl = await getSheetUrl();
+      if (!sheetUrl) {
+        setLoading(false);
+        Alert.alert(
+          'Google Sheets não configurado',
+          'Por favor, adicione um link válido do Google Sheets nas configurações antes de escanear.',
+          [
+            { text: 'Ir para Configurações', onPress: () => router.push('/settings') },
+            { text: 'Cancelar', style: 'cancel' }
+          ]
+        );
+        return;
+      }
+
       if (Platform.OS !== 'web') {
         const info = await FileSystem.getInfoAsync(file.uri);
-        console.log('Info do arquivo:', info);
         if (!info.exists) throw new Error('Arquivo não existe');
       }
       console.log('Enviando para backend...');
@@ -266,7 +296,20 @@ export default function Scan() {
           <TouchableOpacity
             onPress={async () => {
           setLoading(true);
-          const ok = await appendData(fields, items);
+          const sheetUrl = await getSheetUrl();
+          if (!sheetUrl) {
+            setLoading(false);
+            Alert.alert(
+              'Google Sheets não configurado',
+              'Por favor, adicione um link válido do Google Sheets nas configurações antes de enviar.',
+              [
+                { text: 'Ir para Configurações', onPress: () => router.push('/settings') },
+                { text: 'Cancelar', style: 'cancel' }
+              ]
+            );
+            return;
+          }
+          const ok = await appendData(fields, items, sheetUrl); // sheetUrl is now guaranteed to be a string
           Alert.alert(ok ? 'Sucesso' : 'Erro', ok ? 'Dados enviados!' : 'Falha ao enviar dados.');
           if (ok) {
             setModal(false);
