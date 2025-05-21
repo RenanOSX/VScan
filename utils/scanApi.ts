@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 export const BASE_URL =
-  Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.0.249:5000';
+  Platform.OS === 'web' ? 'http://localhost:5000' : 'http://192.168.15.84:5000';
 
 export const ENDPOINTS = {
   google_vision: '/scan',

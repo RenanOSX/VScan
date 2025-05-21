@@ -19,7 +19,7 @@ import { WebView } from 'react-native-webview';
 import { router } from 'expo-router';
 import { COLORS } from '@/constants/theme';
 import scanStyles from '@/styles/scan.styles';
-import { callBackend, appendData, FileInfo, ScanType } from './scanApi';
+import { callBackend, appendData, FileInfo, ScanType } from '../../utils/scanApi';
 
 const SCAN_OPTIONS: { label: string; value: ScanType }[] = [
   { label: 'Google Vision', value: 'google_vision' },
@@ -199,56 +199,87 @@ export default function Scan() {
           style={{ flex: 1 }}
         >
           <SafeAreaView style={{ flex: 1, padding: 20, backgroundColor: '#f9f9f9' }}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {Object.entries(fields).map(([k, v]) => (
-                <View key={k} style={{ marginBottom: 16, backgroundColor: '#fff', borderRadius: 12, padding: 12, elevation: 2 }}>
-                  <Text style={{ fontWeight: '600', marginBottom: 4 }}>{k}</Text>
-                  <TextInput
-                    value={String(v)}
-                    onChangeText={(t) => updateField(k, t)}
-                    style={{ borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 8, backgroundColor: '#f7f7f7' }}
-                  />
-                </View>
-              ))}
-              {items.map((item, i) => (
-                <View key={i} style={{ marginBottom: 24, backgroundColor: '#fff', borderRadius: 12, padding: 12, elevation: 2 }}>
-                  {(['descricao', 'quantidade', 'preco_total'] as const).map((f) => (
-                    <View key={f} style={{ marginBottom: 8 }}>
-                      <Text style={{ fontWeight: '600', marginBottom: 4 }}>{f}</Text>
-                      <TextInput
-                        value={item[f]}
-                        onChangeText={(t) => updateItem(i, f, t)}
-                        style={{ borderWidth: 1, padding: 8, borderRadius: 8, backgroundColor: '#f7f7f7' }}
-                      />
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </ScrollView>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
-              <TouchableOpacity
-                onPress={() => setModal(false)}
-                style={{ padding: 14, backgroundColor: '#ff4d4d', borderRadius: 12, flex: 1, marginRight: 12 }}
-              >
-                <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }}>Recusar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={async () => {
-                  setLoading(true);
-                  const ok = await appendData(fields, items);
-                  Alert.alert(ok ? 'Sucesso' : 'Erro', ok ? 'Dados enviados!' : 'Falha ao enviar dados.');
-                  if (ok) {
-                    setModal(false);
-                    setFile(null);
-                    setFileType(null);
-                  }
-                  setLoading(false);
-                }}
-                style={{ padding: 14, backgroundColor: COLORS.primary, borderRadius: 12, flex: 1 }}
-              >
-                <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }}>Confirmar</Text>
-              </TouchableOpacity>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {Object.entries(fields).map(([k, v]) => {
+            // Map field keys to friendly labels
+            const fieldLabels: Record<string, string> = {
+          cnpj: 'CNPJ',
+          data_emissao: 'Data de Emissão',
+          valor_total: 'Valor Total',
+          // Add more mappings as needed
+            };
+            // Add emoji based on field key
+            let emoji = '';
+            if (k.toLowerCase().includes('cnpj')) emoji = '🏢 ';
+            else if (k.toLowerCase().includes('data')) emoji = '📅 ';
+            else if (k.toLowerCase().includes('valor')) emoji = '💰 ';
+            else emoji = '📝 ';
+            const label = fieldLabels[k] || k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            return (
+          <View key={k} style={{ marginBottom: 16, backgroundColor: '#fff', borderRadius: 12, padding: 12, elevation: 2 }}>
+            <Text style={{ fontWeight: '600', marginBottom: 4 }}>{emoji}{label}</Text>
+            <TextInput
+              value={String(v)}
+              onChangeText={(t) => updateField(k, t)}
+              style={{ borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 8, backgroundColor: '#f7f7f7' }}
+              placeholder={`Digite o valor de ${label}`}
+            />
+          </View>
+            );
+          })}
+          {items.map((item, i) => (
+            <View key={i} style={{ marginBottom: 24, backgroundColor: '#fff', borderRadius: 12, padding: 12, elevation: 2 }}>
+          {(['descricao', 'quantidade', 'preco_total'] as const).map((f) => {
+            const itemLabels: Record<string, string> = {
+              descricao: 'Descrição',
+              quantidade: 'Quantidade',
+              preco_total: 'Preço Total',
+            };
+            let emoji = '';
+            if (f === 'descricao') emoji = '📦 ';
+            else if (f === 'quantidade') emoji = '🔢 ';
+            else if (f === 'preco_total') emoji = '💲 ';
+            else emoji = '📝 ';
+            const label = itemLabels[f] || f.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            return (
+              <View key={f} style={{ marginBottom: 8 }}>
+            <Text style={{ fontWeight: '600', marginBottom: 4 }}>{emoji}{label}</Text>
+            <TextInput
+              value={item[f]}
+              onChangeText={(t) => updateItem(i, f, t)}
+              style={{ borderWidth: 1, padding: 8, borderRadius: 8, backgroundColor: '#f7f7f7' }}
+              placeholder={`Digite o valor de ${label}`}
+            />
+              </View>
+            );
+          })}
             </View>
+          ))}
+        </ScrollView>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
+          <TouchableOpacity
+            onPress={() => setModal(false)}
+            style={{ padding: 14, backgroundColor: '#ff4d4d', borderRadius: 12, flex: 1, marginRight: 12 }}
+          >
+            <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }}>❌ Recusar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={async () => {
+          setLoading(true);
+          const ok = await appendData(fields, items);
+          Alert.alert(ok ? 'Sucesso' : 'Erro', ok ? 'Dados enviados!' : 'Falha ao enviar dados.');
+          if (ok) {
+            setModal(false);
+            setFile(null);
+            setFileType(null);
+          }
+          setLoading(false);
+            }}
+            style={{ padding: 14, backgroundColor: COLORS.primary, borderRadius: 12, flex: 1 }}
+          >
+            <Text style={{ color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }}>✅ Confirmar</Text>
+          </TouchableOpacity>
+        </View>
           </SafeAreaView>
         </KeyboardAvoidingView>
       </Modal>
