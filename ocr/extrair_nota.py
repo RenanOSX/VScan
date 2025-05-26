@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import base64, io, json, os, re, tempfile, traceback, pytesseract, requests, cv2
-from statistics import mean
-from typing import Any, Dict, List, Tuple
+from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -11,8 +10,9 @@ from google.cloud import vision_v1
 from google.oauth2 import service_account
 from google.protobuf.json_format import MessageToDict
 from pdf2image import convert_from_path
-from datetime import datetime
 from PIL import Image
+from statistics import mean
+from typing import Any, Dict, List, Tuple
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "creds.json")
@@ -215,7 +215,6 @@ def append():
         items = data.get("itens")
         sheet_url = data.get("sheetUrl")
 
-        # Extract spreadsheet ID from sheet_url
         spreadsheet_id = None
         if sheet_url:
             import re
@@ -313,7 +312,6 @@ def processar_nota(caminho_imagem):
 @app.route('/scan_tesseract', methods=['POST'])
 def scan_tesseract():
     try:
-        # Recebe arquivo ou imagem base64
         f = request.files.get('file')
         is_pdf = False
         temp_path = None
@@ -338,12 +336,11 @@ def scan_tesseract():
         results = []
 
         if is_pdf:
-            # Converte PDF em imagens
             pages = convert_from_path(
                 temp_path,
                 poppler_path=PATH_POPPLER
             )
-            os.unlink(temp_path)  # Remove o PDF temporário
+            os.unlink(temp_path)
             for idx, page in enumerate(pages):
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
                     page.save(temp_img.name, format='PNG')
