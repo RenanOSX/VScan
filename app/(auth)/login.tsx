@@ -22,7 +22,10 @@ export default function login() {
         }
     }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> feature/add-camera
   return (
     <View style={styles.container}>
         {/* BRAND SECTION */}
@@ -34,7 +37,10 @@ export default function login() {
             <Text style={styles.tagline}>Simple Scanner for good looking people</Text>
         </View>
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> feature/add-camera
         {/* ILLUSTRATION SECTION */}
         <View style={styles.illustrationContainer}>
             <Image
@@ -65,4 +71,8 @@ export default function login() {
         </View>
     </View>
   )
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> feature/add-camera

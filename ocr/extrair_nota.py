@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import base64, io, json, os, re, tempfile, traceback, pytesseract, requests, cv2
+<<<<<<< HEAD
 from statistics import mean
 from typing import Any, Dict, List, Tuple
+=======
+from datetime import datetime
+>>>>>>> feature/add-camera
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -11,8 +15,14 @@ from google.cloud import vision_v1
 from google.oauth2 import service_account
 from google.protobuf.json_format import MessageToDict
 from pdf2image import convert_from_path
+<<<<<<< HEAD
 from datetime import datetime
 from PIL import Image
+=======
+from PIL import Image
+from statistics import mean
+from typing import Any, Dict, List, Tuple
+>>>>>>> feature/add-camera
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "creds.json")
@@ -215,7 +225,10 @@ def append():
         items = data.get("itens")
         sheet_url = data.get("sheetUrl")
 
+<<<<<<< HEAD
         # Extract spreadsheet ID from sheet_url
+=======
+>>>>>>> feature/add-camera
         spreadsheet_id = None
         if sheet_url:
             import re
@@ -313,7 +326,10 @@ def processar_nota(caminho_imagem):
 @app.route('/scan_tesseract', methods=['POST'])
 def scan_tesseract():
     try:
+<<<<<<< HEAD
         # Recebe arquivo ou imagem base64
+=======
+>>>>>>> feature/add-camera
         f = request.files.get('file')
         is_pdf = False
         temp_path = None
@@ -338,12 +354,19 @@ def scan_tesseract():
         results = []
 
         if is_pdf:
+<<<<<<< HEAD
             # Converte PDF em imagens
+=======
+>>>>>>> feature/add-camera
             pages = convert_from_path(
                 temp_path,
                 poppler_path=PATH_POPPLER
             )
+<<<<<<< HEAD
             os.unlink(temp_path)  # Remove o PDF temporário
+=======
+            os.unlink(temp_path)
+>>>>>>> feature/add-camera
             for idx, page in enumerate(pages):
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
                     page.save(temp_img.name, format='PNG')
@@ -389,4 +412,8 @@ def scan_tesseract():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
+<<<<<<< HEAD
     app.run(host='0.0.0.0', port=5000, debug=True)
+=======
+    app.run(host='0.0.0.0', port=5000, debug=True)
+>>>>>>> feature/add-camera

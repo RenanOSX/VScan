@@ -7,7 +7,10 @@ import * as Linking from 'expo-linking';
 export default function Home() {
     const [text, setText] = useState('');
 
+<<<<<<< HEAD
     // Animation refs
+=======
+>>>>>>> feature/add-camera
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -19,6 +22,7 @@ export default function Home() {
         }).start();
     }, [fadeAnim]);
 
+<<<<<<< HEAD
     // Aceita tanto o link inteiro quanto só o ID
     const extractSheetUrl = (input: string) => {
         // Se for link do Google Sheets, retorna ele mesmo
@@ -26,6 +30,12 @@ export default function Home() {
             return input;
         }
         // Se for só o ID, monta a URL
+=======
+    const extractSheetUrl = (input: string) => {
+        if (/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9-_]+/.test(input)) {
+            return input;
+        }
+>>>>>>> feature/add-camera
         const idMatch = input.match(/([a-zA-Z0-9-_]{44,})/);
         if (idMatch) {
             return `https://docs.google.com/spreadsheets/d/${idMatch[1]}`;
@@ -118,4 +128,8 @@ export default function Home() {
             </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
     );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> feature/add-camera
