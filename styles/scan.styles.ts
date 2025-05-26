@@ -203,7 +203,7 @@ const scanStyles = StyleSheet.create({
         top: 50,
         left: 0,
         right: 0,
-        backgroundColor: COLORS.blue,
+        backgroundColor: COLORS.white,
         borderRadius: 8,
         elevation: 5,
         zIndex: 10,
