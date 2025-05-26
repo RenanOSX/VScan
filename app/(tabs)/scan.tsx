@@ -1,17 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import {Alert, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
@@ -46,7 +34,6 @@ const formatDate = (v: string) =>
     .replace(/(\d{2})(\d)/, '$1/$2')
     .replace(/(\d{2})(\d)/, '$1/$2');
 
-// Helper to get sheetUrl from options.json
 const getSheetUrl = async (): Promise<string | null> => {
   try {
     const content = await FileSystem.readAsStringAsync(OPTIONS_PATH);
