@@ -1,13 +1,3 @@
 {
-    "type": "service_account",
-    "project_id": "ninth-sol-457700-t8",
-    "private_key_id": "b0191292e53eb6017f5e01e8f471588136435006",
-    "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCf4kSR4U1d5Zs/\nNdL6UaAOjf7LMcuXjVtDbhln7FPwq23yUWmjmmZF1jdwIEzw9Ma6XGKWviL9xHYy\nC21ysKnOqeaADqhdDrS0NoMvheWAi/ggybvJ/LbUBWMRhWbaj26JBvVDVzLB0cnc\nQCO/LRCcCZFtexKhNrdNuhuEceKgqOfmBs+yGqYgE4DrSmpNN9pM5WMfDPFco65n\niVLwcrtWRmP+Mza5tD5sGShDHBKiQqGrodS4+uGh+prlRMqdCUjvP6VmjL3OFgvW\ndZnxOIne3pC7sOJfV6xj+gyHV83FBzOfgK0bR9YuhXYX+zzFAmf6rLfJ642chAVX\naBZvZfEXAgMBAAECggEACJsoWmXd6+j5Dfz6tJ4CLJEOHv042pkxnr6QFYejY7gG\nkgg51HmczwjfMQ+RX1hS/iMM7NT36Ir+WxFBvJkFJZUATZz8XmNKl3dmYP98bAqc\nuj8W9vdoa/SM8Zt+/tLA/hU8Ic98HEdg7enHQs932ROsGqWI9Nk6Iq/wMpU4FV0M\nWSTU+YLUzP5wcOocy/VI05XAOdctV1rXsfh/4btRtS09nS1IqALfIAoxLBhFjZKr\nbbl944NtYtLBWP7MWnNunSuWBy8PjYA5fAVOS36N2Etcr9EIf53/LszvPTFnW9so\nr8NFel2gGfpU0i93EgBT5t4gPHwNKFt0V9E81VAUoQKBgQDToPsAKC1MpLdy2cK8\nBdPz+Dz+83ntGCCsj6rbdijXPklGU2YwnVSjH0kaGNssxmA5dWgnX09lG/Cv6Vjk\nCYytntY7UUUoEA22/ThelVvLpR0olG9XhGurQHY1LP4xlaG43CGq+QZt+vdCDI21\niR6hyYd561PQrsnvVkLTFgMoMQKBgQDBZ+ond8Aj9nGZw0Kdp8fLdyJ3aBFYsxgJ\nWwksHCCp+miOxbUQXrxpq0yLZhETffazwH/nYY6WRHlrkhSu+FM8zzlb8uZJ6kR+\nDNOxfeh/tMT9AQhJX+30QqOAsi9JUQG65VYpXyhimA5+/s3hsaQEXp7DbNTqZl12\nBJxmEeMjxwKBgBKc4faNkg5fnlLXnCz1RkL63kJ+H4cezCDhMeHDbqwfqkopI5+6\n9qqyIbfN39j8SZJEJTjxRQZbgru2Bj9oJ5tNkQH+j9qKLuqdMsv+zugGSZ48D97e\noqmZLcxXfLPXuTWNBtkGte4OWJjSidQhjzQjiWrLq7963//Q0mfGU9jBAoGAYeuX\nzOW/XTXgLEaFCscwy94EkEobRjpeuBXkXfXbv9OtbmPBGYmtgR6egZFqoeDLsBSN\nbXuiMoh2pTTvzeqiUg5k7x3a5J98kAk0gQ/LUCUY+zOzm1q7Ykj++SC9+jPOWW7V\nodqw2sI7zKZ7XIKRFTlGzpDid87eEOuit7bktm8CgYEAvQHZoz8O/a6Fc8+FuJ01\nSwyrlx4UOt27oS+DqnSTQxkAbHaOsNpk6gNhASpO/noJOfJgBnKLStFJIVlZ16XS\nWpn5x51A25ULJUFxsroD8e5fRZWp9bRjRKCGsEnAuVAP2N5+/nqZOAfTUIfKjVi1\nSNmvsqTYUtCKNm69c3+S1dU=\n-----END PRIVATE KEY-----\n",
-    "client_email": "sheet-writer@ninth-sol-457700-t8.iam.gserviceaccount.com",
-    "client_id": "112744402403787826589",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/sheet-writer%40ninth-sol-457700-t8.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
+
 }
