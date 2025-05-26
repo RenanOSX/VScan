@@ -13,13 +13,11 @@ export default function InitialLayout() {
 
         const inAuthScreen = segments[0] === "(auth)";
         
-        // If user not signed in and not in auth screen, redirect to login
         if(!isSignedIn && !inAuthScreen) router.replace("/(auth)/login");
         else if(isSignedIn && inAuthScreen) router.replace("/(tabs)/scan");
     }, [isLoaded, isSignedIn, segments]);
 
     if(!isLoaded) return null;
 
-    // If user is signed in, show the current screen
     return <Stack screenOptions={{ headerShown: false }} />;
 }
