@@ -2,7 +2,7 @@
 
 This application aims to improve and simplify document management through automated fiscal data extraction, reducing processing time and significantly decreasing the need for manual data entry.
 
-By using OpenCV, Tesseract OCR, and Google Cloud Vision, integrated with Google Sheets, it facilitates secure storage, sharing, and collaboration
+By using OpenCV, Tesseract OCR, and Google Cloud Vision, integrated with Google Sheets, it facilitates secure storage, sharing, and collaboration.
 
 ## Project Structure
 
