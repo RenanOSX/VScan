@@ -22,7 +22,6 @@ export default function login() {
         }
     }
 
-
   return (
     <View style={styles.container}>
         {/* BRAND SECTION */}
@@ -33,7 +32,6 @@ export default function login() {
             <Text style={styles.appName}>VScan</Text>
             <Text style={styles.tagline}>Simple Scanner for good looking people</Text>
         </View>
-
 
         {/* ILLUSTRATION SECTION */}
         <View style={styles.illustrationContainer}>
