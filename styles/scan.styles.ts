@@ -6,14 +6,11 @@ const scanStyles = StyleSheet.create({
       flex: 1,
       backgroundColor: COLORS.background,
     },
-<<<<<<< HEAD
-=======
     buttonRow: {
       flexDirection: 'column',
       alignItems: 'center',
       width: '100%',
     },
->>>>>>> feature/add-camera
     header: {
       height: 60,
       flexDirection: 'row',
@@ -97,17 +94,6 @@ const scanStyles = StyleSheet.create({
     selectButton: {
       justifyContent: 'center',
       alignItems: 'center',
-<<<<<<< HEAD
-      padding: 30,
-      borderWidth: 2,
-      borderColor: COLORS.surface,
-      borderStyle: 'dashed',
-      borderRadius: 16,
-      width: '90%',
-      aspectRatio: 1.5,
-      backgroundColor: COLORS.surfaceLight,
-      marginBottom: 20,
-=======
       padding: 24,
       borderWidth: 2,
       borderColor: COLORS.surface,
@@ -116,7 +102,6 @@ const scanStyles = StyleSheet.create({
       width: '90%',
       backgroundColor: COLORS.surfaceLight,
       marginBottom: 16,
->>>>>>> feature/add-camera
     },
     selectText: {
       marginTop: 15,
@@ -244,8 +229,4 @@ const scanStyles = StyleSheet.create({
       },
   })
 
-<<<<<<< HEAD
 export default scanStyles;
-=======
-export default scanStyles;
->>>>>>> feature/add-camera

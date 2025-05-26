@@ -1,22 +1,6 @@
 import React, { useState } from 'react';
-<<<<<<< HEAD
-import {
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-=======
 import * as ImagePicker from 'expo-image-picker';
 import {Alert, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
->>>>>>> feature/add-camera
 import * as DocumentPicker from 'expo-document-picker';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
@@ -51,10 +35,6 @@ const formatDate = (v: string) =>
     .replace(/(\d{2})(\d)/, '$1/$2')
     .replace(/(\d{2})(\d)/, '$1/$2');
 
-<<<<<<< HEAD
-// Helper to get sheetUrl from options.json
-=======
->>>>>>> feature/add-camera
 const getSheetUrl = async (): Promise<string | null> => {
   try {
     const content = await FileSystem.readAsStringAsync(OPTIONS_PATH);
@@ -156,8 +136,6 @@ export default function Scan() {
     setFields((p: any) => ({ ...p, [k]: formatted }));
   };
 
-<<<<<<< HEAD
-=======
   const openCamera = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
 
@@ -185,7 +163,6 @@ export default function Scan() {
     }
   };
 
->>>>>>> feature/add-camera
   const updateItem = (i: number, k: string, v: string) => {
     const formatted = ['quantidade', 'preco_total'].includes(k) ? formatNumber(v) : v;
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [k]: formatted } : it)));
@@ -230,15 +207,11 @@ export default function Scan() {
       <View style={scanStyles.content}>
         {loading ? (
           <View style={scanStyles.loadingContainer}>
-<<<<<<< HEAD
-            <Image source={require('@/assets/images/loading_gura1.gif')} style={{ width: 128, height: 128, marginBottom: 16 }} resizeMode="contain" />
-=======
             <Image
               source={require('@/assets/images/loading_gura1.gif')}
               style={{ width: 128, height: 128, marginBottom: 16 }}
               resizeMode="contain"
             />
->>>>>>> feature/add-camera
             <Text style={scanStyles.loadingText}>Processando...</Text>
           </View>
         ) : file ? (
@@ -260,13 +233,6 @@ export default function Scan() {
           </View>
         ) : (
           <View style={scanStyles.emptyStateContainer}>
-<<<<<<< HEAD
-            <TouchableOpacity style={scanStyles.selectButton} onPress={pickFile}>
-              <Ionicons name="document-text" size={64} color={COLORS.primary} />
-              <Text style={scanStyles.selectText}>Select PDF or Image</Text>
-            </TouchableOpacity>
-            <Text style={scanStyles.instructionText}>Select a document to scan it with our AI-powered processing</Text>
-=======
             <View style={scanStyles.buttonRow}>
               <TouchableOpacity style={scanStyles.selectButton} onPress={pickFile}>
                 <Ionicons name="document-text" size={64} color={COLORS.primary} />
@@ -282,15 +248,10 @@ export default function Scan() {
             <Text style={scanStyles.instructionText}>
               Selecione ou fotografe um documento para escaneá-lo com nossa IA
             </Text>
->>>>>>> feature/add-camera
           </View>
         )}
       </View>
 
-<<<<<<< HEAD
-=======
-
->>>>>>> feature/add-camera
       <Modal visible={modal} animationType="slide">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
