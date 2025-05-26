@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import {Alert, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { AntDesign, Ionicons } from '@expo/vector-icons';
@@ -135,6 +136,33 @@ export default function Scan() {
     setFields((p: any) => ({ ...p, [k]: formatted }));
   };
 
+  const openCamera = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (permissionResult.granted === false) {
+      alert("Você precisa permitir o acesso à câmera para usar essa funcionalidade.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      const imageAsset = {
+        uri: asset.uri,
+        name: (asset.uri.split('/').pop() || 'image.jpg') as string,
+        type: 'image',
+      };
+
+      setFile(imageAsset);
+      setFileType('image');
+    }
+  };
+
   const updateItem = (i: number, k: string, v: string) => {
     const formatted = ['quantidade', 'preco_total'].includes(k) ? formatNumber(v) : v;
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [k]: formatted } : it)));
@@ -179,7 +207,11 @@ export default function Scan() {
       <View style={scanStyles.content}>
         {loading ? (
           <View style={scanStyles.loadingContainer}>
-            <Image source={require('@/assets/images/loading_gura1.gif')} style={{ width: 128, height: 128, marginBottom: 16 }} resizeMode="contain" />
+            <Image
+              source={require('@/assets/images/loading_gura1.gif')}
+              style={{ width: 128, height: 128, marginBottom: 16 }}
+              resizeMode="contain"
+            />
             <Text style={scanStyles.loadingText}>Processando...</Text>
           </View>
         ) : file ? (
@@ -201,14 +233,25 @@ export default function Scan() {
           </View>
         ) : (
           <View style={scanStyles.emptyStateContainer}>
-            <TouchableOpacity style={scanStyles.selectButton} onPress={pickFile}>
-              <Ionicons name="document-text" size={64} color={COLORS.primary} />
-              <Text style={scanStyles.selectText}>Select PDF or Image</Text>
-            </TouchableOpacity>
-            <Text style={scanStyles.instructionText}>Select a document to scan it with our AI-powered processing</Text>
+            <View style={scanStyles.buttonRow}>
+              <TouchableOpacity style={scanStyles.selectButton} onPress={pickFile}>
+                <Ionicons name="document-text" size={64} color={COLORS.primary} />
+                <Text style={scanStyles.selectText}>Selecionar Arquivo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={scanStyles.selectButton} onPress={openCamera}>
+                <Ionicons name="camera" size={64} color={COLORS.primary} />
+                <Text style={scanStyles.selectText}>Abrir Câmera</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={scanStyles.instructionText}>
+              Selecione ou fotografe um documento para escaneá-lo com nossa IA
+            </Text>
           </View>
         )}
       </View>
+
 
       <Modal visible={modal} animationType="slide">
         <KeyboardAvoidingView
