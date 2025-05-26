@@ -7,7 +7,6 @@ import * as Linking from 'expo-linking';
 export default function Home() {
     const [text, setText] = useState('');
 
-    // Animation refs
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -19,13 +18,10 @@ export default function Home() {
         }).start();
     }, [fadeAnim]);
 
-    // Aceita tanto o link inteiro quanto só o ID
     const extractSheetUrl = (input: string) => {
-        // Se for link do Google Sheets, retorna ele mesmo
         if (/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9-_]+/.test(input)) {
             return input;
         }
-        // Se for só o ID, monta a URL
         const idMatch = input.match(/([a-zA-Z0-9-_]{44,})/);
         if (idMatch) {
             return `https://docs.google.com/spreadsheets/d/${idMatch[1]}`;
