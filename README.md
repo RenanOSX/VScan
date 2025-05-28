@@ -1,4 +1,4 @@
-# VScan - Document Scanner App
+# # VScan - Document Scanner App
 
 This application aims to improve and simplify document management through automated fiscal data extraction, reducing processing time and significantly decreasing the need for manual data entry.
 
